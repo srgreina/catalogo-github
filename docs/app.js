@@ -9,7 +9,10 @@ const DOMINIOS = {
 };
 const LICENCIAS = { libre: "uso libre", otra: "revisar licencia", sin_licencia: "sin licencia: no reutilizable" };
 const SEMAFORO = { v: "verde", a: "ámbar", r: "rojo" };
-const FUENTES = { github: "búsqueda de GitHub", "registro-mcp": "registro oficial MCP", awesome: "listas awesome" };
+const FUENTES = {
+  github: "búsqueda de GitHub", "registro-mcp": "registro oficial MCP",
+  awesome: "listas awesome", "skill-md": "búsqueda de ficheros SKILL.md",
+};
 const POR_TANDA = 50;
 
 const $ = (sel) => document.querySelector(sel);

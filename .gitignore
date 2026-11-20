@@ -9,3 +9,7 @@ PROMPT Claude Code.md
 data/raw/
 # Modelos de traducción de Argos (se descargan solos)
 .argos/
+# Generados en cada ejecución (la web se publica desde Actions)
+data/catalogo.json
+docs/datos.json
+docs/detalles/

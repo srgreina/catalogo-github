@@ -1,0 +1,94 @@
+name: Catálogo semanal
+
+on:
+  schedule:
+    - cron: "0 3 * * 1"   # lunes a las 03:00 UTC (04:00/05:00 en España)
+  workflow_dispatch:       # lanzable a mano desde la pestaña Actions
+
+permissions:
+  contents: write   # guardar histórico, novedades y caché de traducciones
+  pages: write      # publicar la web
+  id-token: write   # requerido por deploy-pages
+
+concurrency:
+  group: catalogo-semanal
+  cancel-in-progress: false
+
+env:
+  # Si existe el secreto CATALOGO_TOKEN (token personal) se usa; si no, el automático.
+  GITHUB_TOKEN: ${{ secrets.CATALOGO_TOKEN || secrets.GITHUB_TOKEN }}
+  PYTHONUNBUFFERED: "1"
+
+jobs:
+  generar:
+    runs-on: ubuntu-latest
+    timeout-minutes: 340
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - name: Instalar dependencias
+        run: pip install -r requirements.txt
+
+      - name: Recuperar modelos de traducción
+        uses: actions/cache@v4
+        with:
+          path: .argos
+          key: argos-modelos-v1
+
+      - name: Búsqueda de GitHub por topics
+        run: python scripts/recopilar_github.py
+
+      - name: Registro oficial de MCP
+        run: python scripts/recopilar_registro_mcp.py
+
+      - name: Listas awesome
+        run: python scripts/recopilar_awesome.py
+
+      - name: Búsqueda de ficheros SKILL.md
+        continue-on-error: true   # si el token no sirve, se sigue sin esta fuente
+        run: python scripts/recopilar_skillmd.py
+
+      - name: Unir fuentes
+        run: python scripts/unir.py
+
+      - name: Clasificar
+        run: python scripts/clasificar.py
+
+      - name: Traducir descripciones
+        run: python scripts/traducir.py --max-minutos 150
+
+      - name: Generar datos de la web
+        run: python scripts/generar_web.py
+
+      - name: Guardar histórico, novedades y caché de traducciones
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add data/historico.json data/novedades.json data/cache_traducciones.json
+          if git diff --cached --quiet; then
+            echo "Sin cambios que guardar"
+          else
+            git commit -m "Actualización semanal del catálogo ($(date -u +%Y-%m-%d))"
+            git push
+          fi
+
+      - name: Preparar la web
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: docs
+
+  publicar:
+    needs: generar
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.despliegue.outputs.page_url }}
+    steps:
+      - name: Publicar en GitHub Pages
+        id: despliegue
+        uses: actions/deploy-pages@v4

@@ -89,7 +89,7 @@ def tipos(repo: dict) -> list[str]:
     resultado = []
     if (re.search(r"(^|[-_.])skills?([-_.]|$)", nombre)
             or any(re.search(r"(^|-)skills?(-|$)", t) for t in topics)
-            or listas & LISTAS_SKILLS):
+            or listas & LISTAS_SKILLS or "skill-md" in repo.get("fuentes", [])):
         resultado.append("skill")
     if ("mcp" in nombre or any("mcp" in t or t == "model-context-protocol" for t in topics)
             or "registro-mcp" in repo.get("fuentes", []) or listas & LISTAS_MCP):

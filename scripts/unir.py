@@ -83,6 +83,11 @@ def main() -> None:
         destino["listas_awesome"] = listas
     print(f"Listas awesome: {len(awesome)} repos")
 
+    skillmd = leer("skillmd.json").get("repos", {})
+    for clave in skillmd:
+        anadir_fuente(extra(clave), "skill-md")
+    print(f"Búsqueda de SKILL.md: {len(skillmd)} repos")
+
     # Completar con la API de GitHub los repos que no salieron en la búsqueda.
     nombres = sorted(pendientes)
     if args.max_consultas is not None:
