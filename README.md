@@ -27,7 +27,19 @@ python scripts/recopilar_github.py --limite 50     # búsqueda (prueba rápida)
 python scripts/recopilar_registro_mcp.py           # registro MCP
 python scripts/recopilar_awesome.py                # listas awesome
 python scripts/unir.py --max-consultas 20          # unión (prueba sin token)
+python scripts/clasificar.py                       # tipo, dominio, licencia y semáforo
 ```
+
+## Clasificación y semáforo
+
+- **Tipo**: lista awesome, skill, servidor MCP o programa (puede tener varios).
+- **Dominio**: construcción/ingeniería/energía, finanzas e inversión, deporte/rutas/
+  geodatos, documentos y productividad, u «otros». Se decide por palabras clave en
+  nombre, descripción y topics (`DOMINIOS` en `scripts/clasificar.py`).
+- **Licencia**: uso libre, otra (revisar) o sin licencia (no reutilizable).
+- **Semáforo** 🟢🟡🔴: puntuación **orientativa** según antigüedad, estrellas, forks,
+  actividad, si es de una organización, si está en el registro oficial MCP, licencia
+  e incidencias abiertas. **No es un análisis de seguridad del código.**
 
 Si existe la variable de entorno `GITHUB_TOKEN`, los scripts la usan (30
 búsquedas por minuto y consultas por GraphQL de 50 repos a la vez). Sin ella,
