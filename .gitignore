@@ -7,3 +7,5 @@ venv/
 PROMPT Claude Code.md
 # Datos intermedios (se regeneran en cada ejecución)
 data/raw/
+# Modelos de traducción de Argos (se descargan solos)
+.argos/

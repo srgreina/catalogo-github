@@ -28,7 +28,21 @@ python scripts/recopilar_registro_mcp.py           # registro MCP
 python scripts/recopilar_awesome.py                # listas awesome
 python scripts/unir.py --max-consultas 20          # unión (prueba sin token)
 python scripts/clasificar.py                       # tipo, dominio, licencia y semáforo
+python scripts/traducir.py --max-minutos 30        # descripciones al español
 ```
+
+## Traducción
+
+Las descripciones se traducen al español con los modelos de
+[Argos Translate](https://github.com/argosopentech/argos-translate) (offline, sin
+clave), ejecutados directamente con CTranslate2 por lotes. El inglés se traduce
+directamente; el chino, el ruso y el japonés pasan antes por el inglés.
+
+- Los modelos (~470 MB) se descargan solos la primera vez en `.argos/`.
+- `data/cache_traducciones.json` guarda las traducciones: solo se traduce lo nuevo
+  o modificado.
+- `--max-minutos` limita el tiempo; lo pendiente se muestra en el idioma original
+  y se traduce en la siguiente ejecución.
 
 ## Clasificación y semáforo
 
