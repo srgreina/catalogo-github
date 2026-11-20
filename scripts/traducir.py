@@ -46,6 +46,9 @@ A_INGLES = ["zh", "ru", "ja"]          # idiomas que se traducen pasando por el 
 LOTE = 64                              # textos por lote
 MAX_CARACTERES = 600                   # las descripciones más largas se recortan
 
+# Emojis y símbolos que los modelos no conocen (saldrían como «??»).
+RE_EMOJI = re.compile("[\U0001F000-\U0001FFFF←-⇿⌀-⏿①-➿"
+                      "⬀-⯿️‍]+")
 RE_KANA = re.compile(r"[぀-ヿ]")
 RE_HAN = re.compile(r"[一-鿿]")
 RE_CIRILICO = re.compile(r"[Ѐ-ӿ]")
@@ -161,7 +164,8 @@ def main() -> None:
         if clave in cache:
             usados[clave] = cache[clave]
         elif repo["idioma"] == "en" or repo["idioma"] in A_INGLES:
-            pendientes.setdefault(repo["idioma"], {})[clave] = original[:MAX_CARACTERES]
+            limpio = re.sub(r"\s+", " ", RE_EMOJI.sub(" ", original)).strip()
+            pendientes.setdefault(repo["idioma"], {})[clave] = limpio[:MAX_CARACTERES] or original
 
     total_pendientes = sum(len(p) for p in pendientes.values())
     print(f"Descripciones: de caché {len(usados)} · nuevas por traducir {total_pendientes}")

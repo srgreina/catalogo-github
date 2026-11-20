@@ -1,7 +1,7 @@
 # catalogo-github
 Catálogo semanal de MCP, skills y programas públicos de GitHub
 
-> Proyecto en construcción (fase 2: varias fuentes y deduplicado).
+> Proyecto en construcción (fase 5: web). Falta la actualización semanal automática.
 
 ## Qué recoge
 
@@ -29,6 +29,7 @@ python scripts/recopilar_awesome.py                # listas awesome
 python scripts/unir.py --max-consultas 20          # unión (prueba sin token)
 python scripts/clasificar.py                       # tipo, dominio, licencia y semáforo
 python scripts/traducir.py --max-minutos 30        # descripciones al español
+python scripts/generar_web.py                      # datos de la web y novedades
 ```
 
 ## Traducción
@@ -43,6 +44,20 @@ directamente; el chino, el ruso y el japonés pasan antes por el inglés.
   o modificado.
 - `--max-minutos` limita el tiempo; lo pendiente se muestra en el idioma original
   y se traduce en la siguiente ejecución.
+
+## Web
+
+La web estática está en `docs/` (HTML, CSS y JS sin framework) y se publica con
+GitHub Pages. `python scripts/generar_web.py` prepara sus datos:
+
+- `docs/datos.json`: lo necesario para la lista, el buscador y los filtros.
+- `docs/detalles/00..ff.json`: el resto de cada ficha, repartido en 256 ficheros
+  que la web descarga solo al abrir un repo.
+- `data/historico.json`: primera aparición de cada repo y sus estrellas de las
+  últimas semanas. De ahí salen las **novedades de la semana**
+  (`data/novedades.json`) y las **skills en subida**.
+
+Para verla en local: `python -m http.server -d docs` y abrir http://localhost:8000.
 
 ## Clasificación y semáforo
 

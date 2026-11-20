@@ -1,0 +1,141 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Catálogo GitHub de MCP y skills</title>
+<meta name="description" content="Catálogo semanal de servidores MCP, skills de Claude y programas públicos de GitHub, con filtros y semáforo orientativo.">
+<meta name="theme-color" content="#1D2A33">
+<link rel="icon" href="icono.svg" type="image/svg+xml">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@500;600;700&family=Barlow:wght@400;500;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="estilo.css">
+</head>
+<body>
+<header class="cabecera">
+  <div class="cabecera-fila">
+    <h1>Catálogo GitHub <span>de MCP, skills y programas</span></h1>
+    <p class="actualizado" id="actualizado">Cargando datos…</p>
+  </div>
+  <nav class="pestanas" role="tablist" aria-label="Secciones">
+    <button role="tab" aria-selected="true" data-pestana="catalogo" id="tab-catalogo">Catálogo</button>
+    <button role="tab" aria-selected="false" data-pestana="novedades" id="tab-novedades">Novedades de la semana <b id="num-novedades"></b></button>
+    <button role="tab" aria-selected="false" data-pestana="skills" id="tab-skills">Skills</button>
+  </nav>
+</header>
+
+<div class="marco">
+  <aside class="filtros" id="filtros" aria-label="Filtros">
+    <div class="filtros-cabecera">
+      <h2>Filtros</h2>
+      <button class="enlace" id="limpiar" type="button">Quitar filtros</button>
+      <button class="cerrar" id="cerrar-filtros" type="button" aria-label="Cerrar filtros">✕</button>
+    </div>
+
+    <fieldset>
+      <legend>Tipo</legend>
+      <div class="opciones" data-filtro="tipo">
+        <label><input type="checkbox" value="mcp"> Servidor MCP</label>
+        <label><input type="checkbox" value="skill"> Skill</label>
+        <label><input type="checkbox" value="programa"> Programa</label>
+        <label><input type="checkbox" value="lista"> Lista awesome</label>
+      </div>
+    </fieldset>
+
+    <fieldset>
+      <legend>Dominio</legend>
+      <div class="opciones" data-filtro="dominio">
+        <label><input type="checkbox" value="construccion_energia"> Construcción, ingeniería y energía</label>
+        <label><input type="checkbox" value="finanzas_inversion"> Finanzas e inversión</label>
+        <label><input type="checkbox" value="deporte_geodatos"> Deporte, rutas y geodatos</label>
+        <label><input type="checkbox" value="documentos_productividad"> Documentos y productividad</label>
+      </div>
+    </fieldset>
+
+    <fieldset>
+      <legend>Semáforo</legend>
+      <div class="opciones semaforos" data-filtro="semaforo">
+        <label><input type="checkbox" value="v"><i class="luz v"></i> Verde</label>
+        <label><input type="checkbox" value="a"><i class="luz a"></i> Ámbar</label>
+        <label><input type="checkbox" value="r"><i class="luz r"></i> Rojo</label>
+      </div>
+    </fieldset>
+
+    <label class="campo">Estrellas mínimas
+      <select id="f-estrellas">
+        <option value="0">Cualquiera</option>
+        <option value="20">20 o más</option>
+        <option value="100">100 o más</option>
+        <option value="1000">1.000 o más</option>
+      </select>
+    </label>
+
+    <label class="campo">Última actividad
+      <select id="f-actividad">
+        <option value="0">Cualquiera</option>
+        <option value="30">Último mes</option>
+        <option value="90">Últimos 3 meses</option>
+        <option value="180">Últimos 6 meses</option>
+        <option value="365">Último año</option>
+      </select>
+    </label>
+
+    <label class="campo">Licencia
+      <select id="f-licencia">
+        <option value="">Todas</option>
+        <option value="libre">Solo uso libre</option>
+        <option value="otra">Otras (revisar)</option>
+        <option value="sin_licencia">Sin licencia</option>
+      </select>
+    </label>
+
+    <fieldset>
+      <legend>Fuente</legend>
+      <div class="opciones" data-filtro="fuente">
+        <label><input type="checkbox" value="registro-mcp"> En el registro oficial MCP</label>
+        <label><input type="checkbox" value="awesome"> En listas awesome</label>
+      </div>
+    </fieldset>
+
+    <button class="boton ver-resultados" id="ver-resultados" type="button">Ver resultados</button>
+  </aside>
+
+  <main class="contenido">
+    <div class="barra">
+      <input type="search" id="buscar" placeholder="Buscar por nombre, descripción o topic" aria-label="Buscar" autocomplete="off">
+      <button class="boton abrir-filtros" id="abrir-filtros" type="button">Filtros <b id="num-filtros"></b></button>
+    </div>
+
+    <div class="barra-resultados">
+      <p id="resumen" aria-live="polite"></p>
+      <div class="subvista" id="subvista-skills" hidden>
+        <button type="button" data-orden-skills="estrellas" aria-pressed="true">Más usadas</button>
+        <button type="button" data-orden-skills="subida" aria-pressed="false">En subida</button>
+      </div>
+      <label class="orden">Ordenar
+        <select id="orden">
+          <option value="estrellas">Más estrellas</option>
+          <option value="actividad">Actividad reciente</option>
+          <option value="subida">Más estrellas esta semana</option>
+          <option value="nuevos">Más recientes</option>
+          <option value="nombre">Nombre</option>
+        </select>
+      </label>
+    </div>
+
+    <p class="aviso-vista" id="aviso-vista" hidden></p>
+    <ol class="lista" id="lista"></ol>
+    <div id="centinela" aria-hidden="true"></div>
+  </main>
+</div>
+
+<footer class="pie">
+  <p>El semáforo es <strong>orientativo</strong>: valora antigüedad, estrellas, forks, actividad, propietario, licencia e incidencias. No es un análisis de seguridad del código; revisa cada repo antes de usarlo.</p>
+  <p>Fuentes: búsqueda de GitHub, <a href="https://registry.modelcontextprotocol.io">registro oficial de MCP</a> y listas awesome. Descripciones traducidas automáticamente con Argos Translate. Código en <a href="https://github.com/srgreina/catalogo-github">GitHub</a>.</p>
+</footer>
+
+<div class="fondo-hoja" id="fondo-hoja" hidden></div>
+<script src="app.js"></script>
+</body>
+</html>
