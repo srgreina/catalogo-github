@@ -49,10 +49,6 @@ jobs:
       - name: Listas awesome
         run: python scripts/recopilar_awesome.py
 
-      - name: Búsqueda de ficheros SKILL.md
-        continue-on-error: true   # si el token no sirve, se sigue sin esta fuente
-        run: python scripts/recopilar_skillmd.py
-
       - name: Unir fuentes
         run: python scripts/unir.py
 

@@ -1,7 +1,8 @@
 # catalogo-github
 Catálogo semanal de MCP, skills y programas públicos de GitHub
 
-> Proyecto en construcción (fase 5: web). Falta la actualización semanal automática.
+**Web: https://srgreina.github.io/catalogo-github/** — se actualiza sola cada
+lunes (workflow «Catálogo semanal», también lanzable a mano desde Actions).
 
 ## Qué recoge
 
@@ -16,8 +17,13 @@ En todas las fuentes se descartan:
 - los repos archivados;
 - los inactivos (sin push en 6 meses) que además tienen menos de 20 estrellas.
 
-Pendiente: skills.sh (su API exige un token OIDC de Vercel) y la búsqueda de
-código de `SKILL.md`.
+No se usan:
+
+- **skills.sh**: su API exige un token OIDC de Vercel.
+- **Búsqueda de código de `SKILL.md`**: hay ~7,7 millones de ficheros y la API
+  solo permite 10 consultas/min con 1.000 resultados cada una (más de 13 h por
+  semana), y el token automático de Actions apenas tiene cupo para ella. El
+  script `scripts/recopilar_skillmd.py` se conserva, pero no está en el workflow.
 
 ## Uso en local
 
