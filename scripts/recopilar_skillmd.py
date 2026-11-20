@@ -14,6 +14,7 @@ from __future__ import annotations
 import argparse
 import json
 import sys
+import time
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -75,7 +76,15 @@ def main() -> None:
               file=sys.stderr)
         sys.exit(1)
     sesion = sesion_github(token)
-    prueba = sesion.get(API, params={"q": "filename:SKILL.md", "per_page": 1}, timeout=60)
+    # Comprobar que el token sirve para la búsqueda de código. Un 429 o un 403 por
+    # límite de velocidad no es un rechazo: se espera y se reintenta.
+    for intento in range(1, 6):
+        prueba = sesion.get(API, params={"q": "filename:SKILL.md", "per_page": 1}, timeout=60)
+        limite = prueba.status_code == 429 or (
+            prueba.status_code == 403 and "rate limit" in prueba.text.lower())
+        if not limite:
+            break
+        time.sleep(15 * intento)
     if prueba.status_code != 200:
         print(f"La búsqueda de código no acepta este token (HTTP {prueba.status_code}): "
               f"{prueba.text[:300]}", file=sys.stderr)
