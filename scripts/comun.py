@@ -115,6 +115,17 @@ def peticion(sesion: requests.Session, metodo: str, url: str, **kwargs) -> reque
     raise RuntimeError(f"Sin respuesta válida tras {MAX_REINTENTOS} intentos: {url}")
 
 
+RE_SKILL_NOMBRE = re.compile(r"(^|[-_.])skills?([-_.]|$)")
+RE_SKILL_TOPIC = re.compile(r"(^|-)skills?(-|$)")
+
+
+def parece_skill(repo: dict) -> bool:
+    """¿El nombre o los topics del repo indican que es una skill?"""
+    nombre = repo["nombre"].split("/", 1)[-1].lower()
+    return bool(RE_SKILL_NOMBRE.search(nombre)
+                or any(RE_SKILL_TOPIC.search(t.lower()) for t in repo.get("topics", [])))
+
+
 def guardar_por_lineas(ruta: Path, datos: dict, campo: str) -> None:
     """Guarda un JSON con un elemento de «campo» por línea.
 

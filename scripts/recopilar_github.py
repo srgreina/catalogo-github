@@ -8,7 +8,8 @@ Búsqueda incremental: data/estado_github.json guarda los repos de la ejecución
 anterior. Si existe y la última búsqueda completa tiene menos de 85 días, solo se
 buscan los repos con actividad (push) desde la ejecución anterior; el resto se
 conserva con los datos que ya tenía (sus estrellas no se actualizan hasta la
-siguiente búsqueda completa, que se hace cada ~3 meses o con --completa).
+siguiente búsqueda completa, que se hace cada ~3 meses o con --completa). Solo las
+skills con ≥50 estrellas se refrescan cada vez por GraphQL (necesita token).
 
 Token: si existe la variable de entorno GITHUB_TOKEN se usa (30 búsquedas/min);
 si no, va sin token (10 búsquedas/min).
@@ -28,14 +29,16 @@ import sys
 from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
 
-from comun import (DATOS_RAW, RAIZ, descartar, guardar_por_lineas, peticion, preparar_consola,
-                   repo_desde_rest, sesion_github, token_github)
+from comun import (DATOS_RAW, RAIZ, descartar, guardar_por_lineas, obtener_repos,
+                   parece_skill, peticion, preparar_consola, repo_desde_rest, sesion_github,
+                   token_github)
 
 API = "https://api.github.com/search/repositories"
 SALIDA = DATOS_RAW / "github.json"
 ESTADO = RAIZ / "data" / "estado_github.json"
 DIAS_COMPLETA = 85      # cada cuánto se repite la búsqueda completa
 DIAS_MARGEN = 3         # se busca algo antes de la ejecución anterior, por si acaso
+MIN_ESTRELLAS_REFRESCO = 50   # skills conservadas que se refrescan por GraphQL
 
 TOPICS = [
     "mcp-server",
@@ -97,7 +100,7 @@ def subdividir(filtros: dict, nivel: int) -> list[dict]:
 
 
 def recopilar_consulta(cliente: ClienteBusqueda, base: str, filtros: dict, nivel: int,
-                       repos: dict, topic: str, limite: int | None) -> None:
+                       repos: dict, limite: int | None) -> None:
     """Recorre una consulta; si supera el tope de 1.000, la subdivide."""
     if limite and len(repos) >= limite:
         return
@@ -109,7 +112,7 @@ def recopilar_consulta(cliente: ClienteBusqueda, base: str, filtros: dict, nivel
     if total > TOPE_BUSQUEDA and nivel < 3:
         print(f"  {total} resultados en «{consulta}»: subdivido")
         for sub in subdividir(filtros, nivel):
-            recopilar_consulta(cliente, base, sub, nivel + 1, repos, topic, limite)
+            recopilar_consulta(cliente, base, sub, nivel + 1, repos, limite)
         return
     if total > TOPE_BUSQUEDA:
         print(f"  [aviso] «{consulta}» sigue con {total} resultados; solo se leerán 1.000",
@@ -121,20 +124,37 @@ def recopilar_consulta(cliente: ClienteBusqueda, base: str, filtros: dict, nivel
         if pagina > 1:
             datos = cliente.buscar(consulta, pagina)
         for item in datos["items"]:
-            anadir(repos, item, topic)
+            anadir(repos, item)
             if limite and len(repos) >= limite:
                 return
         if len(datos["items"]) < POR_PAGINA:
             break
 
 
-def anadir(repos: dict, item: dict, topic: str) -> None:
-    clave = item["full_name"].lower()
-    if clave in repos:
-        if topic not in repos[clave]["consultas"]:
-            repos[clave]["consultas"].append(topic)
-        return
-    repos[clave] = {**repo_desde_rest(item), "consultas": [topic]}
+def anadir(repos: dict, item: dict) -> None:
+    repos.setdefault(item["full_name"].lower(), repo_desde_rest(item))
+
+
+def refrescar_skills(repos: dict, conservados: list[dict], token: str) -> None:
+    """Actualiza estrellas, archivado, etc. de las skills conservadas con ≥50 estrellas.
+
+    Los repos que ya no existen (NOT_FOUND) se quitan; los que fallan por un error
+    de GitHub se dejan como estaban.
+    """
+    nombres = sorted(r["nombre"] for r in conservados
+                     if r["estrellas"] >= MIN_ESTRELLAS_REFRESCO and parece_skill(r))
+    print(f"Refrescando {len(nombres)} skills con ≥{MIN_ESTRELLAS_REFRESCO} estrellas")
+    fallidos: set[str] = set()
+    nuevos = obtener_repos(nombres, token, fallidos=fallidos)
+    for nombre in nombres:
+        clave = nombre.lower()
+        if clave in nuevos:
+            repos.pop(clave, None)
+            repos[nuevos[clave]["nombre"].lower()] = nuevos[clave]   # por si se renombró
+        elif clave not in fallidos:
+            del repos[clave]
+    borrados = sum(1 for n in nombres if n.lower() not in nuevos and n.lower() not in fallidos)
+    print(f"  refrescadas: {len(nuevos)} · desaparecidas: {borrados} · con error: {len(fallidos)}")
 
 
 def main() -> None:
@@ -175,17 +195,25 @@ def main() -> None:
         print(f"Topic: {topic}")
         recopilar_consulta(cliente, f"topic:{topic} archived:false{filtro_push}",
                            {"stars": f">={args.min_estrellas}"}, 0,
-                           repos, topic, args.limite)
+                           repos, args.limite)
         if args.limite and len(repos) >= args.limite:
             break
 
-    # Incremental: los repos sin actividad conservan los datos de la vez anterior.
+    # Incremental: los repos sin actividad conservan los datos de la vez anterior...
     actualizados = len(repos)
     if estado:
+        conservados_antes = []
         for repo in estado["repos"]:
-            repos.setdefault(repo["nombre"].lower(), repo)
+            repo.pop("consultas", None)       # campo antiguo, ya no se usa
+            if repo["nombre"].lower() not in repos:
+                repos[repo["nombre"].lower()] = repo
+                conservados_antes.append(repo)
         print(f"Actualizados: {actualizados} · conservados de la ejecución anterior: "
-              f"{len(repos) - actualizados}")
+              f"{len(conservados_antes)}")
+        # ...salvo las skills con muchas estrellas: se refrescan por GraphQL, porque
+        # pueden ganar estrellas (o archivarse) sin que nadie haga push.
+        if token:
+            refrescar_skills(repos, conservados_antes, token)
 
     conservados, descartes = [], {}
     for repo in repos.values():

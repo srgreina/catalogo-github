@@ -20,7 +20,7 @@ import re
 from datetime import datetime, timezone
 from pathlib import Path
 
-from comun import DATOS_RAW, RAIZ, preparar_consola
+from comun import DATOS_RAW, RAIZ, parece_skill, preparar_consola
 
 ENTRADA = DATOS_RAW / "unido.json"
 SALIDA = RAIZ / "data" / "catalogo.json"
@@ -87,9 +87,7 @@ def tipos(repo: dict) -> list[str]:
     if nombre.startswith("awesome") or topics & {"awesome", "awesome-list"}:
         return ["lista"]
     resultado = []
-    if (re.search(r"(^|[-_.])skills?([-_.]|$)", nombre)
-            or any(re.search(r"(^|-)skills?(-|$)", t) for t in topics)
-            or listas & LISTAS_SKILLS or "skill-md" in repo.get("fuentes", [])):
+    if parece_skill(repo) or listas & LISTAS_SKILLS:
         resultado.append("skill")
     if ("mcp" in nombre or any("mcp" in t or t == "model-context-protocol" for t in topics)
             or "registro-mcp" in repo.get("fuentes", []) or listas & LISTAS_MCP):

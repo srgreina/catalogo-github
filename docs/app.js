@@ -11,12 +11,17 @@ const LICENCIAS = { libre: "uso libre", otra: "revisar licencia", sin_licencia: 
 const SEMAFORO = { v: "verde", a: "ámbar", r: "rojo" };
 const FUENTES = {
   github: "búsqueda de GitHub", "registro-mcp": "registro oficial MCP",
-  awesome: "listas awesome", "skill-md": "búsqueda de ficheros SKILL.md",
+  awesome: "listas awesome",
 };
 const POR_TANDA = 50;
+const RANGO_SEMAFORO = { v: 3, a: 2, r: 1 };
+const CLAVE_FAVORITOS = "catalogo-favoritos";
+const CLAVE_FILTROS = "catalogo-filtros";
 
 const $ = (sel) => document.querySelector(sel);
 const estado = {
+  favoritos: new Set(),
+  soloFavoritos: false,
   datos: null,
   pestana: "catalogo",
   texto: "",
@@ -36,13 +41,13 @@ const hoy = Date.now();
 const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) =>
   ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
 
-/* Algunas descripciones de GitHub traen entidades HTML (&quot;, &amp;…) sin convertir. */
-const ENTIDADES = { quot: '"', amp: "&", lt: "<", gt: ">", apos: "'", nbsp: " " };
-const decodificar = (s) => (s && s.includes("&"))
-  ? s.replace(/&(?:#(\d+)|#x([0-9a-f]+)|(quot|amp|lt|gt|apos|nbsp));/gi, (m, d, h, n) =>
-      n ? ENTIDADES[n.toLowerCase()]
-        : String.fromCodePoint(d ? +d : parseInt(h, 16)))
-  : s;
+/* localStorage puede no estar disponible (modo privado, bloqueado): nunca debe romper la web. */
+function leerLocal(clave) {
+  try { return localStorage.getItem(clave); } catch { return null; }
+}
+function guardarLocal(clave, valor) {
+  try { localStorage.setItem(clave, valor); } catch { /* sin almacenamiento: se ignora */ }
+}
 
 const normalizar = (s) => String(s ?? "").normalize("NFD").replace(/\p{Diacritic}/gu, "").toLowerCase();
 
@@ -82,9 +87,11 @@ async function cargar() {
     return;
   }
   for (const r of estado.datos.repos) {
-    r.d = decodificar(r.d);
     r._q = normalizar(r.n + " " + r.d);
   }
+  try { estado.favoritos = new Set(JSON.parse(leerLocal(CLAVE_FAVORITOS) || "[]")); } catch { /* vacío */ }
+  pintarNumFavoritos();
+  leerFiltros();
   const generado = new Date(estado.datos.generado);
   $("#actualizado").textContent = "Actualizado el " + generado.toLocaleString("es-ES", {
     day: "numeric", month: "long", year: "numeric", hour: "2-digit", minute: "2-digit", hour12: false,
@@ -103,6 +110,7 @@ function filtrar() {
     if (pestana === "novedades" && !r.nv) return false;
     if (pestana === "skills" && !r.t.includes("skill")) return false;
     if (pestana === "skills" && estado.ordenSkills === "subida" && !(r.sb > 0)) return false;
+    if (estado.soloFavoritos && !estado.favoritos.has(r.n)) return false;
     if (filtros.tipo.size && !r.t.some((t) => filtros.tipo.has(t))) return false;
     if (filtros.dominio.size && !r.m.some((d) => filtros.dominio.has(d))) return false;
     if (filtros.semaforo.size && !filtros.semaforo.has(r.sm)) return false;
@@ -120,6 +128,7 @@ function ordenar(lista) {
   const criterios = {
     estrellas: porEstrellas,
     subida: (a, b) => (b.sb || 0) - (a.sb || 0) || porEstrellas(a, b),
+    semaforo: (a, b) => RANGO_SEMAFORO[b.sm] - RANGO_SEMAFORO[a.sm] || porEstrellas(a, b),
     actividad: (a, b) => (b.p || "").localeCompare(a.p || ""),
     nuevos: (a, b) => (b.c || "").localeCompare(a.c || ""),
     nombre: (a, b) => a.n.localeCompare(b.n, "es", { sensitivity: "base" }),
@@ -130,6 +139,7 @@ function ordenar(lista) {
 function actualizar() {
   if (!estado.datos) return;
   estado.resultado = ordenar(filtrar());
+  guardarFiltros();
   estado.mostrados = 0;
   $("#lista").innerHTML = "";
   pintarAviso();
@@ -187,7 +197,117 @@ function pintarResumen() {
 function contarFiltros() {
   const { filtros } = estado;
   return filtros.tipo.size + filtros.dominio.size + filtros.semaforo.size + filtros.fuente.size
-    + (estado.estrellas ? 1 : 0) + (estado.actividad ? 1 : 0) + (estado.licencia ? 1 : 0);
+    + (estado.estrellas ? 1 : 0) + (estado.actividad ? 1 : 0) + (estado.licencia ? 1 : 0)
+    + (estado.soloFavoritos ? 1 : 0);
+}
+
+/* ---------- Filtros en la dirección (#...) y recordados ---------- */
+
+function textoFiltros() {
+  const p = new URLSearchParams();
+  if (estado.pestana !== "catalogo") p.set("v", estado.pestana);
+  if (estado.texto) p.set("q", estado.texto);
+  for (const [clave, conjunto] of Object.entries(estado.filtros)) {
+    if (conjunto.size) p.set(clave, [...conjunto].join(","));
+  }
+  if (estado.estrellas) p.set("e", estado.estrellas);
+  if (estado.actividad) p.set("a", estado.actividad);
+  if (estado.licencia) p.set("l", estado.licencia);
+  if (estado.orden !== "estrellas") p.set("o", estado.orden);
+  if (estado.ordenSkills !== "estrellas") p.set("os", estado.ordenSkills);
+  if (estado.soloFavoritos) p.set("fav", "1");
+  return p.toString();
+}
+
+function guardarFiltros() {
+  const texto = textoFiltros();
+  guardarLocal(CLAVE_FILTROS, texto);
+  try {
+    history.replaceState(null, "", texto ? "#" + texto : location.pathname + location.search);
+  } catch { /* la dirección no se puede cambiar: se ignora */ }
+}
+
+/* Aplica a la web los filtros de la dirección; si no hay, los de la última visita. */
+function leerFiltros() {
+  const texto = location.hash.slice(1) || leerLocal(CLAVE_FILTROS) || "";
+  const p = new URLSearchParams(texto);
+  const opcion = (id, valor, defecto) =>
+    [...$(id).options].some((o) => o.value === String(valor)) ? String(valor) : defecto;
+
+  Object.values(estado.filtros).forEach((c) => c.clear());
+  for (const clave of Object.keys(estado.filtros)) {
+    (p.get(clave) || "").split(",").filter(Boolean).forEach((v) => estado.filtros[clave].add(v));
+  }
+  estado.texto = p.get("q") || "";
+  estado.estrellas = Number(opcion("#f-estrellas", p.get("e") || 0, "0"));
+  estado.actividad = Number(opcion("#f-actividad", p.get("a") || 0, "0"));
+  estado.licencia = opcion("#f-licencia", p.get("l") || "", "");
+  estado.orden = opcion("#orden", p.get("o") || "estrellas", "estrellas");
+  estado.ordenSkills = p.get("os") === "subida" ? "subida" : "estrellas";
+  estado.soloFavoritos = p.get("fav") === "1";
+  ponerPestana(["novedades", "skills"].includes(p.get("v")) ? p.get("v") : "catalogo");
+
+  $("#buscar").value = estado.texto;
+  document.querySelectorAll("[data-filtro]").forEach((grupo) => {
+    const conjunto = estado.filtros[grupo.dataset.filtro];
+    grupo.querySelectorAll("input").forEach((i) => { i.checked = conjunto.has(i.value); });
+  });
+  $("#f-estrellas").value = String(estado.estrellas);
+  $("#f-actividad").value = String(estado.actividad);
+  $("#f-licencia").value = estado.licencia;
+  $("#orden").value = estado.orden;
+  $("#f-favoritos").checked = estado.soloFavoritos;
+  document.querySelectorAll("[data-orden-skills]").forEach((b) =>
+    b.setAttribute("aria-pressed", String(b.dataset.ordenSkills === estado.ordenSkills)));
+}
+
+function ponerPestana(nombre) {
+  estado.pestana = nombre;
+  document.querySelectorAll(".pestanas button").forEach((b) =>
+    b.setAttribute("aria-selected", String(b.dataset.pestana === nombre)));
+  $("#subvista-skills").hidden = nombre !== "skills";
+  $(".orden").hidden = nombre === "skills";
+}
+
+/* ---------- Favoritos ---------- */
+
+function pintarNumFavoritos() {
+  $("#num-favoritos").textContent = estado.favoritos.size ? `(${estado.favoritos.size})` : "";
+}
+
+function alternarFavorito(nombre) {
+  const quitar = estado.favoritos.has(nombre);
+  quitar ? estado.favoritos.delete(nombre) : estado.favoritos.add(nombre);
+  guardarLocal(CLAVE_FAVORITOS, JSON.stringify([...estado.favoritos]));
+  pintarNumFavoritos();
+  return !quitar;
+}
+
+/* ---------- Descarga de los resultados en CSV ---------- */
+
+function descargarCSV() {
+  // Separador «;» y BOM UTF-8: así Excel en español lo abre bien. Los textos que
+  // empiezan por = + - @ se marcan para que Excel no los tome por una fórmula.
+  const celda = (v) => {
+    let s = String(v ?? "").replace(/\s+/g, " ");
+    if (/^[=+\-@]/.test(s)) s = "'" + s;
+    return `"${s.replace(/"/g, '""')}"`;
+  };
+  const filas = [["Repositorio", "Enlace", "Descripción", "Tipo", "Dominio", "Estrellas",
+                  "Licencia", "Semáforo", "Creado", "Último cambio"]];
+  for (const r of estado.resultado) {
+    filas.push([r.n, `https://github.com/${r.n}`, r.d, r.t.map((t) => TIPOS[t] || t).join(", "),
+                r.m.map((d) => DOMINIOS[d]).join(", "), r.s, r.l || "sin licencia",
+                SEMAFORO[r.sm], r.c || "", r.p || ""]);
+  }
+  const csv = "﻿" + filas.map((f) => f.map(celda).join(";")).join("\r\n");
+  const enlace = document.createElement("a");
+  enlace.href = URL.createObjectURL(new Blob([csv], { type: "text/csv;charset=utf-8" }));
+  enlace.download = `catalogo-github-${new Date().toISOString().slice(0, 10)}.csv`;
+  document.body.appendChild(enlace);
+  enlace.click();
+  enlace.remove();
+  setTimeout(() => URL.revokeObjectURL(enlace.href), 5000);
 }
 
 /* ---------- Pintado de la lista ---------- */
@@ -207,7 +327,7 @@ function fila(r, i) {
   const sube = r.sb > 0 ? `<span class="sube">+${numero(r.sb)} este mes</span>` : "";
   return `<li class="ref" data-sm="${r.sm}" data-i="${i}">
     <button class="ref-resumen" type="button" aria-expanded="false">
-      <span class="ref-nombre"><span><span class="propietario">${esc(propietario)}/</span>${esc(nombre)}</span>${r.nv ? '<span class="nuevo">Nuevo</span>' : ""}</span>
+      <span class="ref-nombre"><span><span class="propietario">${esc(propietario)}/</span>${esc(nombre)}</span>${r.nv ? '<span class="nuevo">Nuevo</span>' : ""}<span class="fav-marca" title="Favorito" ${estado.favoritos.has(r.n) ? "" : "hidden"}>♥</span></span>
       <span class="ref-desc">${esc(r.d) || "<em>Sin descripción</em>"}</span>
       <span class="ref-specs">
         <span class="estrellas">★ ${numero(r.s)}</span>${sube}
@@ -240,9 +360,21 @@ function ficha(base, extra) {
   const url = `https://github.com/${r.n}`;
   const dominios = r.m.length ? r.m.map((d) => DOMINIOS[d]).join(", ") : "Otros";
   const original = r.o
-    ? `<details class="original"><summary>Ver descripción original</summary><p>${esc(decodificar(r.o))}</p></details>`
+    ? `<details class="original"><summary>Ver descripción original</summary><p>${esc(r.o)}</p></details>`
     : "";
-  const web = r.w ? `<a href="${esc(r.w)}" target="_blank" rel="noopener">Web del proyecto</a>` : "";
+  // La web del proyecto la escribe cualquiera: solo se enlaza si es http(s).
+  const web = r.w && /^https?:\/\//i.test(r.w)
+    ? `<a href="${esc(r.w)}" target="_blank" rel="noopener noreferrer">Web del proyecto</a>` : "";
+  // Cómo usarlo (datos del registro oficial MCP). Las direcciones se muestran como
+  // texto, sin enlace: son puntos de conexión para el cliente MCP, no páginas.
+  const uso = (r.pq || r.rt) ? `<div class="uso">
+        <h4>Cómo usarlo (registro oficial MCP)</h4>
+        <ul>
+          ${r.pq ? `<li>Se instala como paquete: ${r.pq.map(esc).join(", ")}</li>` : ""}
+          ${(r.rt || []).map((u) => `<li>Servidor remoto: <code>${esc(u)}</code></li>`).join("")}
+        </ul>
+      </div>` : "";
+  const favorito = estado.favoritos.has(r.n);
   return `<div class="ficha">
     <div class="senal" data-sm="${r.sm}" role="img" aria-label="Semáforo ${SEMAFORO[r.sm]}"><i class="r"></i><i class="a"></i><i class="v"></i></div>
     <div class="ficha-cuerpo">
@@ -250,6 +382,7 @@ function ficha(base, extra) {
       <ul class="motivos">${(r.mo || []).map((m) => `<li>${esc(m)}</li>`).join("") || "<li>Sin puntos a favor</li>"}</ul>
       <p class="orientativo">Valoración orientativa a partir de datos públicos. No es un análisis de seguridad del código.</p>
       ${original}
+      ${uso}
       <dl class="datos">
         <dt>Tipo</dt><dd>${r.t.map((t) => TIPOS[t] || t).join(", ")}</dd>
         <dt>Dominio</dt><dd>${dominios}</dd>
@@ -264,7 +397,8 @@ function ficha(base, extra) {
         <dt>Fuentes</dt><dd>${r.fu.map((f) => FUENTES[f] || f).join(", ")}</dd>
         ${r.tp ? `<dt>Topics</dt><dd>${r.tp.map(esc).join(", ")}</dd>` : ""}
       </dl>
-      <div class="enlaces"><a href="${url}" target="_blank" rel="noopener">Abrir en GitHub</a>${web}</div>
+      <div class="enlaces"><a href="${url}" target="_blank" rel="noopener">Abrir en GitHub</a>${web}
+        <button type="button" class="boton-fav" data-fav="${esc(r.n)}" aria-pressed="${favorito}">${favorito ? "♥ En favoritos" : "♡ Guardar en favoritos"}</button></div>
     </div>
   </div>`;
 }
@@ -272,6 +406,14 @@ function ficha(base, extra) {
 /* ---------- Eventos ---------- */
 
 $("#lista").addEventListener("click", async (ev) => {
+  const bfav = ev.target.closest(".boton-fav");
+  if (bfav) {
+    const activo = alternarFavorito(bfav.dataset.fav);
+    bfav.setAttribute("aria-pressed", String(activo));
+    bfav.textContent = activo ? "♥ En favoritos" : "♡ Guardar en favoritos";
+    bfav.closest(".ref").querySelector(".fav-marca").hidden = !activo;
+    return;
+  }
   const boton = ev.target.closest(".ref-resumen");
   if (!boton) return;
   const li = boton.parentElement;
@@ -303,12 +445,7 @@ $("#buscar").addEventListener("input", (ev) => {
 
 document.querySelectorAll(".pestanas button").forEach((boton) => {
   boton.addEventListener("click", () => {
-    estado.pestana = boton.dataset.pestana;
-    document.querySelectorAll(".pestanas button").forEach((b) =>
-      b.setAttribute("aria-selected", String(b === boton)));
-    const skills = estado.pestana === "skills";
-    $("#subvista-skills").hidden = !skills;
-    $(".orden").hidden = skills;
+    ponerPestana(boton.dataset.pestana);
     actualizar();
   });
 });
@@ -334,6 +471,15 @@ $("#f-estrellas").addEventListener("change", (ev) => { estado.estrellas = Number
 $("#f-actividad").addEventListener("change", (ev) => { estado.actividad = Number(ev.target.value); actualizar(); });
 $("#f-licencia").addEventListener("change", (ev) => { estado.licencia = ev.target.value; actualizar(); });
 $("#orden").addEventListener("change", (ev) => { estado.orden = ev.target.value; actualizar(); });
+$("#f-favoritos").addEventListener("change", (ev) => { estado.soloFavoritos = ev.target.checked; actualizar(); });
+$("#descargar").addEventListener("click", descargarCSV);
+
+/* Si se cambia la dirección a mano (o se pega otra), se aplican esos filtros. */
+window.addEventListener("hashchange", () => {
+  if (!estado.datos || location.hash.slice(1) === textoFiltros()) return;
+  leerFiltros();
+  actualizar();
+});
 
 $("#limpiar").addEventListener("click", () => {
   Object.values(estado.filtros).forEach((c) => c.clear());
@@ -342,6 +488,7 @@ $("#limpiar").addEventListener("click", () => {
   estado.estrellas = 0;
   estado.actividad = 0;
   estado.licencia = "";
+  estado.soloFavoritos = false;
   actualizar();
 });
 

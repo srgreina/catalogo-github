@@ -123,8 +123,8 @@ novedades.
   `docs/detalles/xx.json` elegidos por SHA-1 del nombre en minúsculas. La regla está
   duplicada en `generar_web.py` (`trozo`) y `docs/app.js` (`detalle`): cambiar ambas.
 - **Fuentes descartadas**: skills.sh exige token OIDC de Vercel. La búsqueda de código
-  de `SKILL.md` (`recopilar_skillmd.py`) no está en el workflow: ~7,7 M de ficheros y el
-  token automático de Actions apenas tiene cupo para la búsqueda de código.
+  de `SKILL.md` se probó y se borró (recuperable del historial de git, commit `d87175a`):
+  ~7,7 M de ficheros y el token automático de Actions apenas tiene cupo para ella.
 - **Ejecución programada**: no usar el minuto 0 en el cron (GitHub retrasa o descarta).
 
 ## Entorno local (Windows 11)

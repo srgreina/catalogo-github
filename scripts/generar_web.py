@@ -21,9 +21,10 @@ import argparse
 import hashlib
 import json
 import shutil
+import sys
 from datetime import date, datetime, timedelta, timezone
 
-from comun import RAIZ, preparar_consola
+from comun import RAIZ, guardar_por_lineas, preparar_consola
 
 CATALOGO = RAIZ / "data" / "catalogo.json"
 HISTORICO = RAIZ / "data" / "historico.json"
@@ -38,6 +39,7 @@ DIAS_NOVEDAD = 25
 DIAS_SUBIDA = 25
 DIAS_OLVIDO = 240     # repos que ya no están: se borran del histórico tras ~8 meses
 MAX_TOPICS = 8
+MAX_CAIDA = 0.15      # si el catálogo baja más de un 15 % respecto al anterior, no se publica
 COLOR = {"verde": "v", "ambar": "a", "rojo": "r"}
 
 
@@ -63,6 +65,8 @@ def main() -> None:
                                      formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("--fecha", default=None,
                         help="fecha de la ejecución (AAAA-MM-DD); por defecto, hoy")
+    parser.add_argument("--forzar", action="store_true",
+                        help="publicar aunque el catálogo haya bajado más de un 15 %%")
     args = parser.parse_args()
 
     ahora = datetime.now(timezone.utc)
@@ -74,6 +78,16 @@ def main() -> None:
                  else {"base": hoy_txt, "repos": {}})
     base = historico["base"]
     hist_repos: dict = historico["repos"]
+
+    # Seguridad: si una búsqueda falló a medias, el catálogo saldría con huecos.
+    # Se aborta antes de escribir nada (el workflow no publica ni guarda).
+    previo = historico.get("total")
+    if previo and len(datos["repos"]) < previo * (1 - MAX_CAIDA) and not args.forzar:
+        print(f"[ERROR] El catálogo ha bajado de {previo} a {len(datos['repos'])} repos "
+              f"(más de un {MAX_CAIDA:.0%}). Parece que alguna fuente ha fallado: no se publica. "
+              f"Revisa la ejecución o usa --forzar.", file=sys.stderr)
+        sys.exit(1)
+    historico["total"] = len(datos["repos"])
 
     repos_web, novedades = [], []
     detalles: dict[str, dict] = {}
@@ -123,6 +137,14 @@ def main() -> None:
             detalle["lg"] = repo["lenguaje"]
         if repo.get("web"):
             detalle["w"] = repo["web"]
+        # Cómo usarlo, si está en el registro oficial MCP.
+        registro = repo.get("registro_mcp") or []
+        paquetes = sorted({p for r in registro for p in r.get("paquetes", [])})
+        remotos = list(dict.fromkeys(u for r in registro for u in r.get("remotos", [])))
+        if paquetes:
+            detalle["pq"] = paquetes
+        if remotos:
+            detalle["rt"] = remotos[:2]
         detalles.setdefault(trozo(clave), {})[clave] = detalle
         if nuevo:
             entrada["nv"] = 1
@@ -139,8 +161,7 @@ def main() -> None:
     for clave in [c for c, h in hist_repos.items() if max(h["estrellas"], default="") < limite]:
         del hist_repos[clave]
 
-    HISTORICO.write_text(json.dumps(historico, ensure_ascii=False, separators=(",", ":")),
-                         encoding="utf-8")
+    guardar_por_lineas(HISTORICO, historico, "repos")
     NOVEDADES.write_text(json.dumps({"fecha": hoy_txt, "total": len(novedades),
                                      "repos": novedades}, ensure_ascii=False, indent=2),
                          encoding="utf-8")

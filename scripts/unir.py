@@ -90,11 +90,6 @@ def main() -> None:
         destino["listas_awesome"] = listas
     print(f"Listas awesome: {len(awesome)} repos")
 
-    skillmd = leer("skillmd.json").get("repos", {})
-    for clave in skillmd:
-        anadir_fuente(extra(clave), "skill-md")
-    print(f"Búsqueda de SKILL.md: {len(skillmd)} repos")
-
     ahora = datetime.now(timezone.utc)
     hoy = ahora.date()
     prueba = args.max_consultas is not None

@@ -34,7 +34,8 @@ No se usan:
 - **Búsqueda de código de `SKILL.md`**: hay ~7,7 millones de ficheros y la API
   solo permite 10 consultas/min con 1.000 resultados cada una (más de 13 h por
   ejecución), y el token automático de Actions apenas tiene cupo para ella. El
-  script `scripts/recopilar_skillmd.py` se conserva, pero no está en el workflow.
+  script se probó y se borró; sigue en el historial de git (commit `d87175a` y
+  anteriores) por si se quisiera retomar.
 
 ## Uso en local
 

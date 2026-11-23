@@ -98,6 +98,13 @@
       </div>
     </fieldset>
 
+    <fieldset>
+      <legend>Mis favoritos</legend>
+      <div class="opciones">
+        <label><input type="checkbox" id="f-favoritos"> Solo mis favoritos <span class="sec" id="num-favoritos"></span></label>
+      </div>
+    </fieldset>
+
     <button class="boton ver-resultados" id="ver-resultados" type="button">Ver resultados</button>
   </aside>
 
@@ -113,9 +120,11 @@
         <button type="button" data-orden-skills="estrellas" aria-pressed="true">Más usadas</button>
         <button type="button" data-orden-skills="subida" aria-pressed="false">En subida</button>
       </div>
+      <button class="enlace" id="descargar" type="button" title="Descarga en CSV (se abre con Excel) los repos que se están viendo">Descargar CSV</button>
       <label class="orden">Ordenar
         <select id="orden">
           <option value="estrellas">Más estrellas</option>
+          <option value="semaforo">Semáforo (verdes primero)</option>
           <option value="actividad">Actividad reciente</option>
           <option value="subida">Más estrellas este mes</option>
           <option value="nuevos">Más recientes</option>
