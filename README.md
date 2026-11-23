@@ -11,6 +11,7 @@ de cada mes (workflow «Catálogo mensual», también lanzable a mano desde Acti
 | Búsqueda de GitHub por topics (MCP, skills, Claude Code) | El grueso del catálogo | ≥ 5 |
 | [Registro oficial de MCP](https://registry.modelcontextprotocol.io) | Servidores publicados oficialmente (solo los que tienen repo en GitHub) | ≥ 5 |
 | Listas awesome de MCP y skills | Repos seleccionados a mano | ninguno |
+| [skills.sh](https://skills.sh) (mapas del sitio) | Repos con skills publicadas en ese directorio (solo nombres de repos, no su contenido) | ≥ 5 |
 
 En todas las fuentes se descartan:
 
@@ -44,7 +45,7 @@ Seguridad de la ejecución:
 
 No se usan:
 
-- **skills.sh**: su API exige un token OIDC de Vercel.
+- **API de skills.sh**: exige un token OIDC de Vercel (sí se usan sus mapas del sitio, que son públicos).
 - **Búsqueda de código de `SKILL.md`**: hay ~7,7 millones de ficheros y la API
   solo permite 10 consultas/min con 1.000 resultados cada una (más de 13 h por
   ejecución), y el token automático de Actions apenas tiene cupo para ella. El

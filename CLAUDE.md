@@ -22,7 +22,8 @@ a mano con la casilla «completa») ejecuta en orden:
 | `recopilar_github.py` | API de búsqueda (topics MCP/skills/Claude, ≥5★) + `data/estado_github.json` | `data/raw/github.json`, estado |
 | `recopilar_registro_mcp.py` | registry.modelcontextprotocol.io (cursor, `version=latest`) | `data/raw/registro_mcp.json` |
 | `recopilar_awesome.py` | README de 7 listas awesome | `data/raw/awesome.json` |
-| `unir.py` | los tres anteriores + GraphQL para repos nuevos + `data/descartes.json` | `data/raw/unido.json`, descartes |
+| `recopilar_skills_sh.py` | `skills.sh/sitemap.xml` y sus mapas `sitemap-skills-N.xml` (3 peticiones; `continue-on-error`) | `data/raw/skills_sh.json` |
+| `unir.py` | los cuatro anteriores + GraphQL para repos nuevos + `data/descartes.json` | `data/raw/unido.json`, descartes |
 | `clasificar.py` | `unido.json` | `data/catalogo.json` (tipo, dominio, licencia, semáforo) |
 | `traducir.py` | `catalogo.json` + `data/cache_traducciones.json` | los mismos |
 | `generar_web.py` | `catalogo.json` + `data/historico.json` | `docs/datos.json`, `docs/detalles/*.json`, `docs/ideas.json` (vía `ideas.py`), `data/novedades.json`, histórico |
@@ -99,7 +100,7 @@ novedades.
 
 ## Reglas del catálogo (decididas por el usuario)
 
-- Mínimo 5★ para búsqueda y registro MCP; sin mínimo para listas awesome.
+- Mínimo 5★ para búsqueda, registro MCP y skills.sh; sin mínimo para listas awesome.
 - Siempre fuera los archivados; los inactivos (6 meses sin push) solo si tienen <20★.
 - Servidores del registro sin repo en GitHub: excluidos.
 - Licencia: «libre» / «otra» / «sin licencia (no reutilizable)».
@@ -135,7 +136,12 @@ novedades.
   (~330 B por repo, ~4 MB comprimido con ~42.000 repos); el resto va en 256 ficheros
   `docs/detalles/xx.json` elegidos por SHA-1 del nombre en minúsculas. La regla está
   duplicada en `generar_web.py` (`trozo`) y `docs/app.js` (`detalle`): cambiar ambas.
-- **Fuentes descartadas**: skills.sh exige token OIDC de Vercel. La búsqueda de código
+- **skills.sh**: su API (`/api/v1/`) exige token OIDC de Vercel y su robots.txt prohíbe
+  `/api/` y `/search`, así que NO se usa. Sí se leen sus mapas del sitio (permitidos por
+  robots.txt; sus términos animan al «uso razonable»): ~20.000 skills de ~2.300 repos, solo
+  nombres, nunca contenido. Si cambia el formato, el script sale con error sin escribir
+  nada y el workflow sigue sin la fuente. No hay nº de instalaciones por skill.
+- **Fuentes descartadas**: la búsqueda de código
   de `SKILL.md` se probó y se borró (recuperable del historial de git, commit `d87175a`):
   ~7,7 M de ficheros y el token automático de Actions apenas tiene cupo para ella.
 - **Ejecución programada**: no usar el minuto 0 en el cron (GitHub retrasa o descarta).

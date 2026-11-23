@@ -11,7 +11,7 @@ const LICENCIAS = { libre: "uso libre", otra: "revisar licencia", sin_licencia: 
 const SEMAFORO = { v: "verde", a: "ámbar", r: "rojo" };
 const FUENTES = {
   github: "búsqueda de GitHub", "registro-mcp": "registro oficial MCP",
-  awesome: "listas awesome",
+  awesome: "listas awesome", "skills-sh": "skills.sh",
 };
 const POR_TANDA = 50;
 const RANGO_SEMAFORO = { v: 3, a: 2, r: 1 };

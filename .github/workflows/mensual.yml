@@ -73,6 +73,12 @@ jobs:
       - name: Listas awesome
         run: python scripts/recopilar_awesome.py
 
+      # Si skills.sh cambia su estructura o no responde, el script no guarda nada y
+      # esta ejecución sigue sin esa fuente (continue-on-error).
+      - name: Skills de skills.sh (mapas del sitio)
+        continue-on-error: true
+        run: python scripts/recopilar_skills_sh.py
+
       - name: Unir fuentes
         run: python scripts/unir.py
 

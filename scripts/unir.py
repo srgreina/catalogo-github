@@ -5,8 +5,8 @@ de las listas awesome y no estaban en la búsqueda se completan con la API de
 GitHub, y a todos se les descartan los archivados y los inactivos con pocas
 estrellas. Además:
 
-- Repos que solo vienen del registro MCP: mínimo de 5 estrellas, igual que la
-  búsqueda (en el registro publica cualquiera).
+- Repos que solo vienen del registro MCP o de skills.sh: mínimo de 5 estrellas,
+  igual que la búsqueda (en ambos publica cualquiera).
 - Repos de listas awesome: sin mínimo de estrellas (listas revisadas a mano).
 - Servidores del registro sin repo en GitHub: se excluyen (no hay datos para
   filtrarlos ni para el semáforo).
@@ -89,6 +89,11 @@ def main() -> None:
         anadir_fuente(destino, "awesome")
         destino["listas_awesome"] = listas
     print(f"Listas awesome: {len(awesome)} repos")
+
+    skills_sh = leer("skills_sh.json").get("repos", {})
+    for clave in skills_sh:
+        anadir_fuente(extra(clave), "skills-sh")
+    print(f"skills.sh: {len(skills_sh)} repos")
 
     ahora = datetime.now(timezone.utc)
     hoy = ahora.date()
