@@ -158,9 +158,9 @@ h1 span { font-weight: 500; opacity: .7; }
 @media (min-width: 900px) {
   .filtros {
     position: sticky;
-    top: 104px;
+    top: 132px;
     align-self: start;
-    max-height: calc(100vh - 110px);
+    max-height: calc(100vh - 144px);
     overflow-y: auto;
   }
   .cerrar, .ver-resultados, .abrir-filtros { display: none !important; }

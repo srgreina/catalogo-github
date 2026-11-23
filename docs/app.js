@@ -36,6 +36,14 @@ const hoy = Date.now();
 const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) =>
   ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
 
+/* Algunas descripciones de GitHub traen entidades HTML (&quot;, &amp;…) sin convertir. */
+const ENTIDADES = { quot: '"', amp: "&", lt: "<", gt: ">", apos: "'", nbsp: " " };
+const decodificar = (s) => (s && s.includes("&"))
+  ? s.replace(/&(?:#(\d+)|#x([0-9a-f]+)|(quot|amp|lt|gt|apos|nbsp));/gi, (m, d, h, n) =>
+      n ? ENTIDADES[n.toLowerCase()]
+        : String.fromCodePoint(d ? +d : parseInt(h, 16)))
+  : s;
+
 const normalizar = (s) => String(s ?? "").normalize("NFD").replace(/\p{Diacritic}/gu, "").toLowerCase();
 
 const numero = (n) => Number(n || 0).toLocaleString("es-ES");
@@ -74,6 +82,7 @@ async function cargar() {
     return;
   }
   for (const r of estado.datos.repos) {
+    r.d = decodificar(r.d);
     r._q = normalizar(r.n + " " + r.d);
   }
   const generado = new Date(estado.datos.generado);
@@ -229,7 +238,7 @@ function ficha(base, extra) {
   const url = `https://github.com/${r.n}`;
   const dominios = r.m.length ? r.m.map((d) => DOMINIOS[d]).join(", ") : "Otros";
   const original = r.o
-    ? `<details class="original"><summary>Ver descripción original</summary><p>${esc(r.o)}</p></details>`
+    ? `<details class="original"><summary>Ver descripción original</summary><p>${esc(decodificar(r.o))}</p></details>`
     : "";
   const web = r.w ? `<a href="${esc(r.w)}" target="_blank" rel="noopener">Web del proyecto</a>` : "";
   return `<div class="ficha">
