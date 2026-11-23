@@ -30,6 +30,9 @@ jobs:
   generar:
     runs-on: ubuntu-latest
     timeout-minutes: 340
+    outputs:
+      repos: ${{ steps.resumen.outputs.repos }}
+      novedades: ${{ steps.resumen.outputs.novedades }}
     steps:
       - uses: actions/checkout@v7
 
@@ -46,6 +49,20 @@ jobs:
         with:
           path: .argos
           key: argos-modelos-v1
+
+      # La caché de Actions caduca a los 7 días sin usarse, y con ejecución mensual
+      # siempre habrá caducado. Los modelos están también en una Release del repo
+      # (bajan en segundos; desde argos-net.com tardarían ~45 min).
+      - name: Modelos de traducción desde la Release (si no hay caché)
+        run: |
+          if [ ! -d .argos/en_es ]; then
+            echo "Sin caché de modelos: los bajo de la Release"
+            if gh release download modelos-argos -p argos-modelos.tar.gz -R "${{ github.repository }}"; then
+              tar -xzf argos-modelos.tar.gz && rm argos-modelos.tar.gz
+            else
+              echo "::warning::No se pudo bajar la Release; traducir.py los bajará de argos-net.com (lento)"
+            fi
+          fi
 
       - name: Búsqueda de GitHub por topics
         run: python scripts/recopilar_github.py ${{ inputs.completa && '--completa' || '' }}
@@ -65,8 +82,20 @@ jobs:
       - name: Traducir descripciones
         run: python scripts/traducir.py --max-minutos 150
 
+      # Si el catálogo baja más de un 15 % respecto al mes anterior, este paso falla
+      # y no se guarda ni se publica nada (la web anterior se queda).
       - name: Generar datos de la web
         run: python scripts/generar_web.py
+
+      - name: Resumen para el aviso
+        id: resumen
+        run: |
+          python - <<'EOF' >> "$GITHUB_OUTPUT"
+          import json
+          d = json.load(open("docs/datos.json", encoding="utf-8"))
+          print(f"repos={len(d['repos'])}")
+          print(f"novedades={sum(1 for r in d['repos'] if r.get('nv'))}")
+          EOF
 
       - name: Guardar histórico, novedades, traducciones, estado y descartes
         run: |
@@ -97,3 +126,34 @@ jobs:
       - name: Publicar en GitHub Pages
         id: despliegue
         uses: actions/deploy-pages@v5
+
+  # Aviso del resultado: se crea un Issue que menciona al propietario, así llega
+  # notificación (correo y app móvil de GitHub). El de éxito se cierra al crearlo;
+  # el de fallo queda abierto.
+  avisar:
+    needs: [generar, publicar]
+    if: always()
+    runs-on: ubuntu-latest
+    permissions:
+      issues: write
+    steps:
+      - name: Avisar del resultado
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GENERAR: ${{ needs.generar.result }}
+          PUBLICAR: ${{ needs.publicar.result }}
+          REPOS: ${{ needs.generar.outputs.repos }}
+          NOVEDADES: ${{ needs.generar.outputs.novedades }}
+        run: |
+          EJECUCION="${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+          FECHA=$(date -u +%Y-%m-%d)
+          if [ "$GENERAR" = "success" ] && [ "$PUBLICAR" = "success" ]; then
+            URL=$(gh issue create -R "${{ github.repository }}" \
+              --title "Catálogo actualizado ($FECHA)" \
+              --body "@${{ github.repository_owner }} El catálogo mensual se ha actualizado: $REPOS repos y $NOVEDADES novedades. Web: https://${{ github.repository_owner }}.github.io/catalogo-github/ — Ejecución: $EJECUCION")
+            gh issue close "$URL" -R "${{ github.repository }}"
+          else
+            gh issue create -R "${{ github.repository }}" \
+              --title "FALLÓ la actualización del catálogo ($FECHA)" \
+              --body "@${{ github.repository_owner }} La ejecución mensual ha fallado (generar: $GENERAR, publicar: $PUBLICAR). La web anterior sigue publicada. Revisa: $EJECUCION"
+          fi

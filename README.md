@@ -24,9 +24,23 @@ Para que cada ejecución tarde menos:
   el resto conserva sus datos. Cada ~3 meses (o lanzando el workflow con la
   casilla «Búsqueda completa») se busca todo de nuevo y se actualizan las
   estrellas de los inactivos.
+  Además, las skills con ≥ 50 estrellas se refrescan cada vez por GraphQL (unos
+  5 min), porque pueden ganar estrellas sin que nadie haga cambios.
 - **Descartes recordados**: `data/descartes.json` guarda los repos del registro y
   de las listas que se descartaron (pocas estrellas, archivados, inexistentes) y
   no se vuelven a consultar durante 90 días.
+- **Modelos de traducción en una Release**: la caché de Actions caduca a los 7 días
+  sin usarse, así que con ejecución mensual siempre habría que bajarlos de
+  argos-net.com (~45 min). Se guardan en la Release `modelos-argos` y el workflow
+  los baja de ahí en segundos si no hay caché.
+
+Seguridad de la ejecución:
+
+- Si el catálogo baja más de un 15 % respecto al mes anterior, `generar_web.py`
+  falla y no se guarda ni se publica nada (`--forzar` lo salta a mano).
+- Al terminar, el workflow crea un Issue que menciona al propietario («Catálogo
+  actualizado» o «FALLÓ…»), lo que llega como notificación por correo y por la app
+  móvil de GitHub.
 
 No se usan:
 
@@ -75,7 +89,16 @@ GitHub Pages. `python scripts/generar_web.py` prepara sus datos:
   últimas ejecuciones. De ahí salen las **novedades del mes**
   (`data/novedades.json`) y las **skills en subida** (estrellas ganadas en el mes).
 
+Funciones de la web: buscador y filtros (que se guardan en la dirección `#…` para
+compartirlos y se recuerdan en el navegador), orden por estrellas, semáforo,
+actividad, estrellas del mes, nombre; **descarga de los resultados en CSV**
+(separador `;`, se abre bien con Excel); **favoritos** guardados en el navegador;
+y, en los servidores del registro oficial MCP, el bloque «Cómo usarlo» con su
+paquete (npm, pypi…) y su servidor remoto.
+
 Para verla en local: `python -m http.server -d docs` y abrir http://localhost:8000.
+Necesita `docs/datos.json` y `docs/detalles/` (`python scripts/generar_web.py`; ojo:
+escribe también `data/historico.json`, que no hay que subir).
 
 ## Clasificación y semáforo
 

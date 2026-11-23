@@ -67,7 +67,7 @@ un nombre exige cambiarlo en los dos):
 | `t` tipos | `c` creado (AAAA-MM-DD) | `sp` puntos | `lg` lenguaje |
 | `m` dominios (sin «otros») | `p` último push | `mo` motivos | `w` web |
 | `s` estrellas | `sm` semáforo v/a/r | | |
-| `fu` fuentes | `org`, `nv`, `sb` opcionales | | |
+| `fu` fuentes | `org`, `nv`, `sb` opcionales | `pq` paquetes MCP | `rt` remotos MCP |
 
 **Novedades y subidas** (`generar_web.py` + `app.js`): `historico.json` guarda `base` (fecha
 de la primera ejecución) y, por repo, `primera` aparición y las últimas 8 instantáneas de
@@ -86,8 +86,16 @@ novedades.
   (salvo «pocas estrellas» si ahora están en una lista awesome). Los repos que faltan
   por un error de GraphQL (`fallidos` de `obtener_repos`) no se recuerdan como
   inexistentes.
-- Ambos ficheros se escriben con `guardar_por_lineas` (un repo por línea) para que
-  git solo guarde lo que cambia.
+- Las skills conservadas con ≥50★ se refrescan por GraphQL en cada ejecución
+  (`refrescar_skills`, ~3.500 repos, ~5 min): sin eso «En subida» no vería a las que
+  suben sin hacer push. Los repos que ya no existen se quitan del estado.
+- `estado_github.json`, `descartes.json` e `historico.json` se escriben con
+  `guardar_por_lineas` (un repo por línea) para que git solo guarde lo que cambia.
+  `estado_github.json` pesa ~30 MB (GitHub avisa a 50 MB y rechaza >100 MB): vigilarlo.
+- **Seguridad**: `generar_web.py` guarda `total` en el histórico y aborta (exit 1) si
+  el catálogo baja >15 % (`--forzar` para saltarlo); así una búsqueda fallida no
+  publica un catálogo con huecos. El job `avisar` de `mensual.yml` crea un Issue que
+  menciona al propietario con el resultado (éxito: se cierra solo; fallo: queda abierto).
 
 ## Reglas del catálogo (decididas por el usuario)
 
@@ -116,7 +124,12 @@ novedades.
 - **Traducción**: modelos de Argos usados directamente con CTranslate2 + SentencePiece
   (`int8`, `beam_size=2`, lotes de 64). No usar la librería `argostranslate`: arrastra
   PyTorch (~1 GB) y es ~3 veces más lenta. Modelos en `.argos/` (caché de Actions,
-  clave `argos-modelos-v1`); el servidor argos-net.com es muy lento descargando.
+  clave `argos-modelos-v1`); el servidor argos-net.com es muy lento descargando
+  (~45 min). La caché de Actions caduca a los 7 días sin usarse, y con ejecución
+  mensual siempre habrá caducado: por eso los modelos están también en la Release
+  `modelos-argos` (`argos-modelos.tar.gz`, ~436 MB) y `mensual.yml` los baja de ahí si
+  falta `.argos/en_es`. No borrar esa Release. Para regenerarla: comprimir `.argos` y
+  `gh release upload modelos-argos <fichero> --clobber`.
   En Actions traduce ~15 textos/s; `--max-minutos` evita pasar del límite de 6 h.
 - **Tamaño de la web**: `datos.json` solo lleva lo necesario para lista/búsqueda/filtros
   (~330 B por repo, ~4 MB comprimido con ~42.000 repos); el resto va en 256 ficheros
@@ -126,6 +139,14 @@ novedades.
   de `SKILL.md` se probó y se borró (recuperable del historial de git, commit `d87175a`):
   ~7,7 M de ficheros y el token automático de Actions apenas tiene cupo para ella.
 - **Ejecución programada**: no usar el minuto 0 en el cron (GitHub retrasa o descarta).
+- **Web**: los filtros viajan en la dirección (`#tipo=mcp&o=semaforo…`, ver
+  `textoFiltros`/`leerFiltros` en `app.js`) y se recuerdan en `localStorage`; favoritos
+  también en `localStorage`. Todo acceso a `localStorage` va con try/catch (`leerLocal`).
+  El CSV lleva BOM, separador `;` y marca con `'` los textos que empiezan por `=+-@`.
+  Los datos de la web se limpian de entidades HTML al recopilar (`arreglar_texto`), no en JS.
+- **Pruebas de la web en local**: no ejecutar `generar_web.py` tal cual (reescribe
+  `data/historico.json`, que está versionado); usar un script que cambie `HISTORICO`,
+  `NOVEDADES`, `WEB` y `DETALLES` a una carpeta temporal.
 
 ## Entorno local (Windows 11)
 
