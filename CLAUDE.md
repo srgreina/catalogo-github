@@ -2,7 +2,7 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
-Catálogo semanal de servidores MCP, skills de Claude y programas públicos de GitHub.
+Catálogo mensual de servidores MCP, skills de Claude y programas públicos de GitHub.
 Web: https://srgreina.github.io/catalogo-github/ (repo público `srgreina/catalogo-github`).
 
 ## Cómo trabajar con el usuario
@@ -14,14 +14,15 @@ Web: https://srgreina.github.io/catalogo-github/ (repo público `srgreina/catalo
 
 ## Flujo de datos
 
-El workflow `.github/workflows/semanal.yml` (lunes 03:37 UTC y lanzable a mano) ejecuta en orden:
+El workflow `.github/workflows/mensual.yml` (día 1 de cada mes a las 03:37 UTC, y lanzable
+a mano con la casilla «completa») ejecuta en orden:
 
 | Script | Lee | Escribe |
 |---|---|---|
-| `recopilar_github.py` | API de búsqueda (topics MCP/skills/Claude, ≥5★) | `data/raw/github.json` |
+| `recopilar_github.py` | API de búsqueda (topics MCP/skills/Claude, ≥5★) + `data/estado_github.json` | `data/raw/github.json`, estado |
 | `recopilar_registro_mcp.py` | registry.modelcontextprotocol.io (cursor, `version=latest`) | `data/raw/registro_mcp.json` |
 | `recopilar_awesome.py` | README de 7 listas awesome | `data/raw/awesome.json` |
-| `unir.py` | los tres anteriores + GraphQL para repos nuevos | `data/raw/unido.json` |
+| `unir.py` | los tres anteriores + GraphQL para repos nuevos + `data/descartes.json` | `data/raw/unido.json`, descartes |
 | `clasificar.py` | `unido.json` | `data/catalogo.json` (tipo, dominio, licencia, semáforo) |
 | `traducir.py` | `catalogo.json` + `data/cache_traducciones.json` | los mismos |
 | `generar_web.py` | `catalogo.json` + `data/historico.json` | `docs/datos.json`, `docs/detalles/*.json`, `data/novedades.json`, histórico |
@@ -34,7 +35,7 @@ No hay tests ni linter. Se verifica así:
 
 ```bash
 python -m py_compile scripts/*.py                    # sintaxis
-python scripts/recopilar_github.py --limite 50       # un script, sin token y con límite
+python scripts/recopilar_github.py --limite 50       # un script, sin token y con límite (no toca el estado)
 python scripts/unir.py --max-consultas 20            # sin token: REST de uno en uno (60/h)
 python scripts/traducir.py --limite 50               # requiere ctranslate2 + sentencepiece
 python -m http.server -d docs                        # ver la web en http://localhost:8000
@@ -46,9 +47,9 @@ relativa al propio script). `GITHUB_TOKEN` en el entorno activa GraphQL y 30 bú
 Workflow y resultados en GitHub:
 
 ```bash
-gh workflow run semanal.yml -R srgreina/catalogo-github
+gh workflow run mensual.yml -R srgreina/catalogo-github              # -f completa=true: búsqueda completa
 gh run list -R srgreina/catalogo-github -L 3
-gh run view <id> -R srgreina/catalogo-github --log | grep -E "Encontrados:|Total unido|Traducciones nuevas|Repos en la web|Errores de GraphQL"
+gh run view <id> -R srgreina/catalogo-github --log | grep -E "Búsqueda (incr|compl)|Encontrados:|Total unido|Traducciones nuevas|Repos en la web|Errores de GraphQL"
 ```
 
 Esas líneas de resumen las imprime cada script al terminar; son la forma de comprobar
@@ -70,9 +71,23 @@ un nombre exige cambiarlo en los dos):
 
 **Novedades y subidas** (`generar_web.py` + `app.js`): `historico.json` guarda `base` (fecha
 de la primera ejecución) y, por repo, `primera` aparición y las últimas 8 instantáneas de
-estrellas. Un repo es nuevo (`nv`) si `primera > base` y tiene menos de 7 días; `sb` son
-las estrellas ganadas desde la instantánea de hace ≥6 días (solo si es positiva). Mientras
-`primera_semana` sea verdadero, la web explica que aún no hay novedades.
+estrellas. Un repo es nuevo (`nv`) si `primera > base` y tiene menos de 25 días; `sb` son
+las estrellas ganadas desde la instantánea de hace ≥25 días (solo si es positiva). 25 días
+y no 30: el mes más corto tiene 28, y así una ejecución manual a mitad de mes no vacía
+las novedades. Mientras `primera_ejecucion` sea verdadero, la web explica que aún no hay
+novedades.
+
+**Ahorro de tiempo** (antes: búsqueda 50 min + unir 41 min):
+- `recopilar_github.py` es incremental: con `data/estado_github.json` y una búsqueda
+  completa de hace <85 días, solo busca `pushed:>=` (ejecución anterior − 3 días) y
+  conserva el resto del estado, con sus estrellas sin actualizar. Sin estado, con
+  `--completa` o pasados 85 días, busca todo. `--limite`/`--topics` no tocan el estado.
+- `unir.py` no vuelve a consultar durante 90 días los repos de `data/descartes.json`
+  (salvo «pocas estrellas» si ahora están en una lista awesome). Los repos que faltan
+  por un error de GraphQL (`fallidos` de `obtener_repos`) no se recuerdan como
+  inexistentes.
+- Ambos ficheros se escriben con `guardar_por_lineas` (un repo por línea) para que
+  git solo guarde lo que cambia.
 
 ## Reglas del catálogo (decididas por el usuario)
 
@@ -83,12 +98,14 @@ las estrellas ganadas desde la instantánea de hace ≥6 días (solo si es posit
 - Dominios por palabras clave (`DOMINIOS` en `clasificar.py`), evitando términos ambiguos
   («architecture», «training», «maps», «stock»…).
 - Semáforo por puntos, siempre presentado como **orientativo, no análisis de seguridad**.
-- «Skills en subida» usa estrellas de GitHub ganadas en la semana (no hay datos de instalaciones).
+- «Skills en subida» usa estrellas de GitHub ganadas en el mes (no hay datos de instalaciones).
+- Ejecución mensual (decidido el 2026-11-23 para reducir tiempo de Actions).
 
 ## Qué se guarda en git y qué no
 
 - En el repo: código, `docs/` (web), `data/historico.json`, `data/novedades.json`,
-  `data/cache_traducciones.json` (los tres los actualiza el workflow con un commit).
+  `data/cache_traducciones.json`, `data/estado_github.json`, `data/descartes.json`
+  (los actualiza el workflow con un commit).
 - Fuera del repo (`.gitignore`): `data/raw/`, `data/catalogo.json`, `docs/datos.json`,
   `docs/detalles/`, `.venv/`, `.argos/`. La web se publica con `upload-pages-artifact` +
   `deploy-pages` (Pages en modo «GitHub Actions»), no desde la rama.

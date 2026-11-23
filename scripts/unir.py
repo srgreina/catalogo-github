@@ -11,22 +11,29 @@ estrellas. Además:
 - Servidores del registro sin repo en GitHub: se excluyen (no hay datos para
   filtrarlos ni para el semáforo).
 
+Los descartes se recuerdan en data/descartes.json durante 90 días: en ese tiempo
+no se vuelven a consultar (la mayoría son repos del registro con menos de 5
+estrellas, y consultarlos todos cada vez costaba unos 35 minutos).
+
 Uso:
     python scripts/unir.py
-    python scripts/unir.py --max-consultas 20     # prueba sin token
+    python scripts/unir.py --max-consultas 20     # prueba sin token (no toca los descartes)
 """
 
 from __future__ import annotations
 
 import argparse
 import json
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
-from comun import DATOS_RAW, descartar, obtener_repos, preparar_consola, token_github
+from comun import (DATOS_RAW, RAIZ, descartar, guardar_por_lineas, obtener_repos,
+                   preparar_consola, token_github)
 
 SALIDA = DATOS_RAW / "unido.json"
+DESCARTES = RAIZ / "data" / "descartes.json"
 MIN_ESTRELLAS_REGISTRO = 5
+DIAS_DESCARTE = 90
 
 
 def leer(nombre: str) -> dict:
@@ -88,31 +95,53 @@ def main() -> None:
         anadir_fuente(extra(clave), "skill-md")
     print(f"Búsqueda de SKILL.md: {len(skillmd)} repos")
 
-    # Completar con la API de GitHub los repos que no salieron en la búsqueda.
-    nombres = sorted(pendientes)
-    if args.max_consultas is not None:
-        nombres = nombres[:args.max_consultas]
-    print(f"Repos nuevos a consultar en GitHub: {len(nombres)} de {len(pendientes)}")
-    datos = obtener_repos(nombres, token_github())
-
     ahora = datetime.now(timezone.utc)
-    descartes: dict[str, int] = {}
+    hoy = ahora.date()
+    prueba = args.max_consultas is not None
 
-    def contar(motivo: str) -> None:
+    # Descartes recientes: no se vuelven a consultar. El de «pocas estrellas» solo
+    # vale si el repo sigue sin estar en una lista awesome (que no exige mínimo).
+    previos = (json.loads(DESCARTES.read_text(encoding="utf-8"))["repos"]
+               if DESCARTES.exists() and not prueba else {})
+    limite = (hoy - timedelta(days=DIAS_DESCARTE)).isoformat()
+
+    def sigue_descartado(clave: str) -> bool:
+        if clave not in previos or previos[clave][1] < limite:
+            return False
+        return previos[clave][0] != "registro_pocas_estrellas" or \
+            "awesome" not in pendientes[clave]["fuentes"]
+
+    recordados = {c: previos[c] for c in pendientes if sigue_descartado(c)}
+
+    # Completar con la API de GitHub los repos que no salieron en la búsqueda.
+    nombres = sorted(c for c in pendientes if c not in recordados)
+    if prueba:
+        nombres = nombres[:args.max_consultas]
+    print(f"Repos a consultar en GitHub: {len(nombres)} de {len(pendientes)} "
+          f"({len(recordados)} descartados hace menos de {DIAS_DESCARTE} días)")
+    fallidos: set[str] = set()
+    datos = obtener_repos(nombres, token_github(), fallidos=fallidos)
+
+    descartes: dict[str, int] = {}
+    nuevos_descartes: dict[str, list[str]] = {}
+
+    def contar(clave: str, motivo: str) -> None:
         descartes[motivo] = descartes.get(motivo, 0) + 1
+        if clave not in fallidos:
+            nuevos_descartes[clave] = [motivo, hoy.isoformat()]
 
     for clave in nombres:
         repo = datos.get(clave)
         info = pendientes[clave]
         if repo is None:
-            contar("no_existe")
+            contar(clave, "no_existe")
             continue
         motivo = descartar(repo, ahora)
         if motivo:
-            contar(motivo)
+            contar(clave, motivo)
             continue
         if "awesome" not in info["fuentes"] and repo["estrellas"] < MIN_ESTRELLAS_REGISTRO:
-            contar("registro_pocas_estrellas")
+            contar(clave, "registro_pocas_estrellas")
             continue
         nueva = repo["nombre"].lower()  # puede diferir si el repo se renombró
         if nueva in catalogo:
@@ -141,10 +170,19 @@ def main() -> None:
         "sin_consultar": len(pendientes) - len(nombres),
         "repos": lista,
     }, ensure_ascii=False, indent=2), encoding="utf-8")
-    print(f"\nTotal unido: {len(lista)} · por fuente: {por_fuente} · descartados: {descartes}")
-    if len(pendientes) > len(nombres):
+    print(f"\nTotal unido: {len(lista)} · por fuente: {por_fuente} · descartados: {descartes}"
+          f" · recordados sin consultar: {len(recordados)}")
+    if fallidos:
+        print(f"  [aviso] {len(fallidos)} repos sin datos por errores de GitHub (no se recuerdan)")
+    if prueba and len(pendientes) > len(nombres):
         print(f"[prueba] {len(pendientes) - len(nombres)} repos nuevos sin consultar")
     print(f"Guardado en {args.salida}")
+
+    if not prueba:
+        # Solo se guardan los descartes de repos que siguen en alguna fuente.
+        guardar_por_lineas(DESCARTES, {"generado": hoy.isoformat(),
+                                       "repos": {**recordados, **nuevos_descartes}}, "repos")
+        print(f"Descartes guardados en {DESCARTES}: {len(recordados) + len(nuevos_descartes)}")
 
 
 if __name__ == "__main__":

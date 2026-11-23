@@ -4,12 +4,19 @@ Usa la API REST de búsqueda de repositorios. Para sortear el tope de 1.000
 resultados por búsqueda, divide cada consulta por año de creación, después por
 rangos de estrellas y, si aún hace falta, por meses.
 
+Búsqueda incremental: data/estado_github.json guarda los repos de la ejecución
+anterior. Si existe y la última búsqueda completa tiene menos de 85 días, solo se
+buscan los repos con actividad (push) desde la ejecución anterior; el resto se
+conserva con los datos que ya tenía (sus estrellas no se actualizan hasta la
+siguiente búsqueda completa, que se hace cada ~3 meses o con --completa).
+
 Token: si existe la variable de entorno GITHUB_TOKEN se usa (30 búsquedas/min);
 si no, va sin token (10 búsquedas/min).
 
 Uso:
-    python scripts/recopilar_github.py                 # todo
-    python scripts/recopilar_github.py --limite 50     # prueba rápida
+    python scripts/recopilar_github.py                 # incremental o completa, según el estado
+    python scripts/recopilar_github.py --completa      # fuerza la búsqueda completa
+    python scripts/recopilar_github.py --limite 50     # prueba rápida (no toca el estado)
     python scripts/recopilar_github.py --topics mcp-server --limite 20
 """
 
@@ -18,14 +25,17 @@ from __future__ import annotations
 import argparse
 import json
 import sys
-from datetime import datetime, timedelta, timezone
+from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
 
-from comun import (DATOS_RAW, descartar, peticion, preparar_consola, repo_desde_rest,
-                   sesion_github, token_github)
+from comun import (DATOS_RAW, RAIZ, descartar, guardar_por_lineas, peticion, preparar_consola,
+                   repo_desde_rest, sesion_github, token_github)
 
 API = "https://api.github.com/search/repositories"
 SALIDA = DATOS_RAW / "github.json"
+ESTADO = RAIZ / "data" / "estado_github.json"
+DIAS_COMPLETA = 85      # cada cuánto se repite la búsqueda completa
+DIAS_MARGEN = 3         # se busca algo antes de la ejecución anterior, por si acaso
 
 TOPICS = [
     "mcp-server",
@@ -137,23 +147,46 @@ def main() -> None:
                         help="topics a consultar (por defecto, la lista completa)")
     parser.add_argument("--min-estrellas", type=int, default=MIN_ESTRELLAS,
                         help=f"estrellas mínimas (por defecto {MIN_ESTRELLAS})")
+    parser.add_argument("--completa", action="store_true",
+                        help="buscar todo aunque haya estado de la ejecución anterior")
     parser.add_argument("--salida", type=Path, default=SALIDA)
     args = parser.parse_args()
+
+    ahora = datetime.now(timezone.utc)
+    hoy = ahora.date()
+    # Las pruebas (límite o topics a mano) ni usan ni modifican el estado.
+    prueba = bool(args.limite) or args.topics != TOPICS or args.min_estrellas != MIN_ESTRELLAS
+    estado = None
+    if not prueba and not args.completa and ESTADO.exists():
+        estado = json.loads(ESTADO.read_text(encoding="utf-8"))
+        if (hoy - date.fromisoformat(estado["ultima_completa"])).days >= DIAS_COMPLETA:
+            estado = None
+    desde = (date.fromisoformat(estado["ultima"]) - timedelta(days=DIAS_MARGEN)
+             if estado else None)
+    print(f"Búsqueda {'incremental (push desde ' + desde.isoformat() + ')' if desde else 'completa'}")
 
     token = token_github()
     print(f"Token: {'sí' if token else 'no (10 búsquedas/min)'}")
     cliente = ClienteBusqueda(token)
     repos: dict[str, dict] = {}
+    filtro_push = f" pushed:>={desde.isoformat()}" if desde else ""
 
     for topic in args.topics:
         print(f"Topic: {topic}")
-        recopilar_consulta(cliente, f"topic:{topic} archived:false",
+        recopilar_consulta(cliente, f"topic:{topic} archived:false{filtro_push}",
                            {"stars": f">={args.min_estrellas}"}, 0,
                            repos, topic, args.limite)
         if args.limite and len(repos) >= args.limite:
             break
 
-    ahora = datetime.now(timezone.utc)
+    # Incremental: los repos sin actividad conservan los datos de la vez anterior.
+    actualizados = len(repos)
+    if estado:
+        for repo in estado["repos"]:
+            repos.setdefault(repo["nombre"].lower(), repo)
+        print(f"Actualizados: {actualizados} · conservados de la ejecución anterior: "
+              f"{len(repos) - actualizados}")
+
     conservados, descartes = [], {}
     for repo in repos.values():
         motivo = descartar(repo, ahora)
@@ -176,6 +209,14 @@ def main() -> None:
     print(f"\nEncontrados: {len(repos)} · conservados: {len(conservados)} · "
           f"descartados: {descartes or 0} · peticiones: {cliente.peticiones}")
     print(f"Guardado en {args.salida}")
+
+    if not prueba:
+        guardar_por_lineas(ESTADO, {
+            "ultima": hoy.isoformat(),
+            "ultima_completa": estado["ultima_completa"] if estado else hoy.isoformat(),
+            "repos": conservados,
+        }, "repos")
+        print(f"Estado guardado en {ESTADO}")
 
 
 if __name__ == "__main__":

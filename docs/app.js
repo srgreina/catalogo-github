@@ -78,7 +78,7 @@ async function cargar() {
     estado.datos = await resp.json();
   } catch (err) {
     $("#actualizado").textContent = "No se han podido cargar los datos.";
-    $("#lista").innerHTML = `<li class="vacio">No se ha podido leer <code>datos.json</code> (${esc(err.message)}). Recarga la página; si sigue fallando, la actualización semanal puede estar en curso.</li>`;
+    $("#lista").innerHTML = `<li class="vacio">No se ha podido leer <code>datos.json</code> (${esc(err.message)}). Recarga la página; si sigue fallando, la actualización mensual puede estar en curso.</li>`;
     return;
   }
   for (const r of estado.datos.repos) {
@@ -152,11 +152,13 @@ function rellenar() {
 }
 
 function mensajeVacio() {
-  if (estado.pestana === "novedades" && estado.datos.primera_semana) {
-    return "Esta es la primera actualización del catálogo, así que todavía no hay novedades. A partir de la próxima semana aparecerán aquí los repos nuevos.";
+  if (estado.pestana === "novedades") {
+    return estado.datos.primera_ejecucion
+      ? "Esta es la primera actualización del catálogo, así que todavía no hay novedades. A partir de la próxima aparecerán aquí los repos nuevos."
+      : "No hay repos nuevos en el último mes que cumplan estos filtros.";
   }
   if (estado.pestana === "skills" && estado.ordenSkills === "subida") {
-    return "Aún no hay estrellas de la semana anterior con las que comparar. Esta lista se llenará tras la próxima actualización.";
+    return "Aún no hay estrellas del mes anterior con las que comparar. Esta lista se llenará tras la próxima actualización mensual.";
   }
   return "Ningún repo cumple estos filtros. Quita algún filtro o cambia la búsqueda.";
 }
@@ -165,7 +167,7 @@ function pintarAviso() {
   const aviso = $("#aviso-vista");
   let texto = "";
   if (estado.pestana === "novedades") {
-    texto = "Repos que han aparecido por primera vez en el catálogo durante los últimos 7 días.";
+    texto = "Repos que han aparecido por primera vez en el catálogo en el último mes (desde la actualización anterior).";
   } else if (estado.pestana === "skills") {
     texto = estado.ordenSkills === "subida"
       ? "Skills que más estrellas de GitHub han ganado desde la actualización anterior."
@@ -202,7 +204,7 @@ function pintarTanda() {
 function fila(r, i) {
   const [propietario, nombre] = r.n.split("/");
   const tipos = r.t.map((t) => `<span class="etiqueta">${TIPOS[t] || t}</span>`).join("");
-  const sube = r.sb > 0 ? `<span class="sube">+${numero(r.sb)} esta semana</span>` : "";
+  const sube = r.sb > 0 ? `<span class="sube">+${numero(r.sb)} este mes</span>` : "";
   return `<li class="ref" data-sm="${r.sm}" data-i="${i}">
     <button class="ref-resumen" type="button" aria-expanded="false">
       <span class="ref-nombre"><span><span class="propietario">${esc(propietario)}/</span>${esc(nombre)}</span>${r.nv ? '<span class="nuevo">Nuevo</span>' : ""}</span>
@@ -252,7 +254,7 @@ function ficha(base, extra) {
         <dt>Tipo</dt><dd>${r.t.map((t) => TIPOS[t] || t).join(", ")}</dd>
         <dt>Dominio</dt><dd>${dominios}</dd>
         <dt>Licencia</dt><dd>${esc(r.l || "Ninguna")} (${LICENCIAS[r.lt]})</dd>
-        <dt>Estrellas</dt><dd>${numero(r.s)}${r.sb ? ` (+${numero(r.sb)} esta semana)` : ""}</dd>
+        <dt>Estrellas</dt><dd>${numero(r.s)}${r.sb ? ` (+${numero(r.sb)} este mes)` : ""}</dd>
         <dt>Forks</dt><dd>${numero(r.f)}</dd>
         <dt>Incidencias</dt><dd>${numero(r.i)} abiertas</dd>
         <dt>Propietario</dt><dd>${r.org ? "Organización" : "Particular"}</dd>

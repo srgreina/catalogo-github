@@ -1,9 +1,9 @@
-"""Genera los datos de la web, el histórico y las novedades de la semana.
+"""Genera los datos de la web, el histórico y las novedades del mes.
 
 - Lee data/catalogo.json (ya clasificado y traducido).
 - Actualiza data/historico.json: fecha en que se vio cada repo por primera vez y
-  sus estrellas en las últimas semanas.
-- Escribe data/novedades.json: repos que aparecen por primera vez esta semana.
+  sus estrellas en las últimas ejecuciones (una al mes).
+- Escribe data/novedades.json: repos que aparecen por primera vez en el último mes.
 - Escribe docs/datos.json: versión reducida (campos cortos) que carga la web, y
   docs/detalles/00..ff.json: el resto de cada ficha, repartido por el SHA-1 del
   nombre (la web descarga solo el fichero del repo que se abre).
@@ -30,8 +30,13 @@ HISTORICO = RAIZ / "data" / "historico.json"
 NOVEDADES = RAIZ / "data" / "novedades.json"
 WEB = RAIZ / "docs" / "datos.json"
 DETALLES = RAIZ / "docs" / "detalles"
-SEMANAS_GUARDADAS = 8
-DIAS_NOVEDAD = 7
+INSTANTANEAS_GUARDADAS = 8
+# La ejecución es mensual (el mes más corto: 28 días). Con 25 días, lo visto en la
+# ejecución anterior ya no cuenta como novedad, y una ejecución manual a mitad de
+# mes no borra las novedades ni las subidas.
+DIAS_NOVEDAD = 25
+DIAS_SUBIDA = 25
+DIAS_OLVIDO = 240     # repos que ya no están: se borran del histórico tras ~8 meses
 MAX_TOPICS = 8
 COLOR = {"verde": "v", "ambar": "a", "rojo": "r"}
 
@@ -77,11 +82,11 @@ def main() -> None:
         h = hist_repos.setdefault(clave, {"primera": hoy_txt, "estrellas": {}})
         h["estrellas"][hoy_txt] = repo["estrellas"]
         # Conservar solo las últimas instantáneas.
-        for fecha in sorted(h["estrellas"])[:-SEMANAS_GUARDADAS]:
+        for fecha in sorted(h["estrellas"])[:-INSTANTANEAS_GUARDADAS]:
             del h["estrellas"][fecha]
 
         nuevo = h["primera"] > base and (hoy - date.fromisoformat(h["primera"])).days < DIAS_NOVEDAD
-        previas = estrellas_hace(h["estrellas"], hoy, 6)
+        previas = estrellas_hace(h["estrellas"], hoy, DIAS_SUBIDA)
         subida = repo["estrellas"] - previas if previas is not None else None
 
         original = repo.get("descripcion") or ""
@@ -128,9 +133,9 @@ def main() -> None:
             entrada["sb"] = subida
         repos_web.append(entrada)
 
-    # Los repos que ya no están en el catálogo se borran del histórico pasadas
-    # las semanas guardadas (por si vuelven, no contarían como novedad antes).
-    limite = (hoy - timedelta(weeks=SEMANAS_GUARDADAS)).isoformat()
+    # Los repos que ya no están en el catálogo se borran del histórico pasado un
+    # tiempo (si vuelven antes, no cuentan como novedad).
+    limite = (hoy - timedelta(days=DIAS_OLVIDO)).isoformat()
     for clave in [c for c, h in hist_repos.items() if max(h["estrellas"], default="") < limite]:
         del hist_repos[clave]
 
@@ -142,7 +147,7 @@ def main() -> None:
     WEB.parent.mkdir(parents=True, exist_ok=True)
     WEB.write_text(json.dumps({
         "generado": ahora.isoformat(timespec="minutes"),
-        "primera_semana": base == hoy_txt,
+        "primera_ejecucion": base == hoy_txt,
         "repos": repos_web,
     }, ensure_ascii=False, separators=(",", ":")), encoding="utf-8")
 

@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import html
+import json
 import os
 import re
 import sys
@@ -113,10 +115,35 @@ def peticion(sesion: requests.Session, metodo: str, url: str, **kwargs) -> reque
     raise RuntimeError(f"Sin respuesta válida tras {MAX_REINTENTOS} intentos: {url}")
 
 
+def guardar_por_lineas(ruta: Path, datos: dict, campo: str) -> None:
+    """Guarda un JSON con un elemento de «campo» por línea.
+
+    Para ficheros que se suben a git cada mes: así git solo guarda las líneas que
+    cambian y no el fichero entero.
+    """
+    elementos = datos[campo]
+    if isinstance(elementos, dict):
+        lineas = [f"{json.dumps(k, ensure_ascii=False)}:"
+                  f"{json.dumps(v, ensure_ascii=False, separators=(',', ':'))}"
+                  for k, v in sorted(elementos.items())]
+        abre, cierra = "{", "}"
+    else:
+        lineas = [json.dumps(e, ensure_ascii=False, separators=(",", ":")) for e in elementos]
+        abre, cierra = "[", "]"
+    cabecera = {k: v for k, v in datos.items() if k != campo}
+    texto = json.dumps(cabecera, ensure_ascii=False)[:-1]
+    texto += (", " if cabecera else "") + f'"{campo}": {abre}\n' + ",\n".join(lineas) + f"\n{cierra}}}\n"
+    ruta.parent.mkdir(parents=True, exist_ok=True)
+    ruta.write_text(texto, encoding="utf-8")
+
+
 def arreglar_texto(texto: str | None) -> str:
-    """Repara textos con codificación doble (p. ej. «â€”» en lugar de «—»)."""
+    """Repara textos con codificación doble (p. ej. «â€”» en lugar de «—») y
+    entidades HTML sin convertir (p. ej. «&quot;» en lugar de «"»)."""
     if not texto:
         return ""
+    if "&" in texto:
+        texto = html.unescape(texto)
     if any(marca in texto for marca in ("Ã", "â€", "Â")):
         try:
             return texto.encode("cp1252").decode("utf-8")
@@ -192,11 +219,14 @@ CAMPOS_GRAPHQL = """
 """
 
 
-def obtener_repos(nombres: list[str], token: str | None, lote: int = 50) -> dict[str, dict]:
+def obtener_repos(nombres: list[str], token: str | None, lote: int = 50,
+                  fallidos: set[str] | None = None) -> dict[str, dict]:
     """Datos de una lista de «owner/repo». Clave: el nombre pedido, en minúsculas.
 
     Con token usa GraphQL (50 repos por petición); sin token, REST de uno en uno
     (solo apto para pruebas: GitHub permite 60 peticiones/hora sin token).
+    Si se pasa «fallidos», se añaden los repos que faltan por un error de GitHub
+    (no porque no existan), para no darlos por inexistentes.
     """
     sesion = sesion_github(token)
     resultado: dict[str, dict] = {}
@@ -212,11 +242,13 @@ def obtener_repos(nombres: list[str], token: str | None, lote: int = 50) -> dict
     errores: dict[str, int] = {}
     for inicio in range(0, len(nombres), lote):
         grupo = nombres[inicio:inicio + lote]
-        datos = _consulta_graphql(sesion, grupo, errores)
+        datos, completo = _consulta_graphql(sesion, grupo, errores)
         for i, nombre in enumerate(grupo):
             nodo = datos.get(f"r{i}")
             if nodo:
                 resultado[nombre.lower()] = repo_desde_graphql(nodo)
+            elif not completo and fallidos is not None:
+                fallidos.add(nombre.lower())
         hechos = min(inicio + lote, len(nombres))
         if hechos % 1000 < lote or hechos == len(nombres):
             print(f"  {hechos}/{len(nombres)} repos consultados")
@@ -229,8 +261,12 @@ def obtener_repos(nombres: list[str], token: str | None, lote: int = 50) -> dict
 ERRORES_PERMANENTES = {"NOT_FOUND", "FORBIDDEN"}
 
 
-def _consulta_graphql(sesion: requests.Session, grupo: list[str], errores: dict) -> dict:
-    """Pide un lote de repos por GraphQL. Reintenta si falla algo que no sea «no existe»."""
+def _consulta_graphql(sesion: requests.Session, grupo: list[str],
+                      errores: dict) -> tuple[dict, bool]:
+    """Pide un lote de repos por GraphQL. Reintenta si falla algo que no sea «no existe».
+
+    Devuelve los datos y si la respuesta es fiable (False: agotó los reintentos).
+    """
     partes = []
     for i, nombre in enumerate(grupo):
         owner, repo = nombre.split("/", 1)
@@ -244,13 +280,13 @@ def _consulta_graphql(sesion: requests.Session, grupo: list[str], errores: dict)
         if cuerpo.get("data") is not None and not graves:
             for t in tipos:
                 errores[t] = errores.get(t, 0) + 1
-            return cuerpo["data"]
+            return cuerpo["data"], True
         print(f"  [GraphQL] lote fallido ({', '.join(sorted(set(graves))) or 'sin datos'}): "
               f"reintento {intento}/3", file=sys.stderr)
         time.sleep(20 * intento)
     for t in graves or ["SIN_DATOS"]:
         errores[t] = errores.get(t, 0) + 1
-    return (cuerpo.get("data") or {}) if cuerpo else {}
+    return ((cuerpo.get("data") or {}) if cuerpo else {}), False
 
 
 def _gql(texto: str) -> str:
