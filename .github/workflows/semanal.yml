@@ -2,7 +2,9 @@ name: Catálogo semanal
 
 on:
   schedule:
-    - cron: "0 3 * * 1"   # lunes a las 03:00 UTC (04:00/05:00 en España)
+    # Lunes a las 03:37 UTC (04:37/05:37 en España). Se evita el minuto 0: a esa
+    # hora GitHub tiene picos de carga y retrasa o descarta ejecuciones programadas.
+    - cron: "37 3 * * 1"
   workflow_dispatch:       # lanzable a mano desde la pestaña Actions
 
 permissions:
@@ -24,9 +26,9 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 340
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@v7
         with:
           python-version: "3.12"
           cache: pip
@@ -35,7 +37,7 @@ jobs:
         run: pip install -r requirements.txt
 
       - name: Recuperar modelos de traducción
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           path: .argos
           key: argos-modelos-v1
@@ -70,11 +72,12 @@ jobs:
             echo "Sin cambios que guardar"
           else
             git commit -m "Actualización semanal del catálogo ($(date -u +%Y-%m-%d))"
+            git pull --rebase origin main   # por si main cambió durante la ejecución
             git push
           fi
 
       - name: Preparar la web
-        uses: actions/upload-pages-artifact@v3
+        uses: actions/upload-pages-artifact@v5
         with:
           path: docs
 
@@ -87,4 +90,4 @@ jobs:
     steps:
       - name: Publicar en GitHub Pages
         id: despliegue
-        uses: actions/deploy-pages@v4
+        uses: actions/deploy-pages@v5

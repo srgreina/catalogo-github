@@ -129,7 +129,17 @@ function actualizar() {
     $("#lista").innerHTML = `<li class="vacio">${mensajeVacio()}</li>`;
     return;
   }
-  pintarTanda();
+  rellenar();
+}
+
+/* Pinta tandas hasta que la lista sobrepase la pantalla (el observador solo
+   avisa cuando el centinela entra en pantalla, no si ya estaba dentro). */
+function rellenar() {
+  const centinela = $("#centinela");
+  do {
+    pintarTanda();
+  } while (estado.mostrados < estado.resultado.length
+           && centinela.getBoundingClientRect().top < window.innerHeight + 800);
 }
 
 function mensajeVacio() {
@@ -187,7 +197,7 @@ function fila(r, i) {
   return `<li class="ref" data-sm="${r.sm}" data-i="${i}">
     <button class="ref-resumen" type="button" aria-expanded="false">
       <span class="ref-nombre"><span><span class="propietario">${esc(propietario)}/</span>${esc(nombre)}</span>${r.nv ? '<span class="nuevo">Nuevo</span>' : ""}</span>
-      <p class="ref-desc">${esc(r.d) || "<em>Sin descripción</em>"}</p>
+      <span class="ref-desc">${esc(r.d) || "<em>Sin descripción</em>"}</span>
       <span class="ref-specs">
         <span class="estrellas">★ ${numero(r.s)}</span>${sube}
         ${tipos}
@@ -271,7 +281,7 @@ $("#lista").addEventListener("click", async (ev) => {
 });
 
 new IntersectionObserver((entradas) => {
-  if (entradas[0].isIntersecting && estado.mostrados < estado.resultado.length) pintarTanda();
+  if (entradas[0].isIntersecting && estado.mostrados < estado.resultado.length) rellenar();
 }, { rootMargin: "800px" }).observe($("#centinela"));
 
 let espera;

@@ -20,9 +20,11 @@ MAX_REINTENTOS = 5
 
 # Enlaces de github.com que no son repositorios.
 NO_SON_REPOS = {
-    "about", "apps", "collections", "contact", "enterprise", "features", "login",
-    "marketplace", "orgs", "pricing", "security", "settings", "site", "sponsors",
-    "topics", "trending", "users", "readme", "customer-stories", "join", "signup",
+    "about", "account", "apps", "assets", "codespaces", "collections", "contact",
+    "customer-stories", "dashboard", "enterprise", "explore", "features", "join",
+    "login", "marketplace", "new", "notifications", "orgs", "pricing", "readme",
+    "search", "security", "settings", "signup", "site", "sponsors", "topics",
+    "trending", "user-attachments", "users",
 }
 RE_REPO_GITHUB = re.compile(
     r"https?://(?:www\.)?github\.com/([A-Za-z0-9](?:[A-Za-z0-9-]*[A-Za-z0-9])?)/([A-Za-z0-9._-]+)"
@@ -67,21 +69,43 @@ def pausa_si_agotado(resp: requests.Response) -> None:
         time.sleep(espera)
 
 
+def es_limite(resp: requests.Response) -> bool:
+    """¿Es un rechazo por límite de velocidad (y no por falta de permisos)?"""
+    if resp.status_code == 429:
+        return True
+    return resp.status_code == 403 and (
+        resp.headers.get("X-RateLimit-Remaining") == "0"
+        or "Retry-After" in resp.headers
+        or "rate limit" in resp.text.lower())
+
+
 def peticion(sesion: requests.Session, metodo: str, url: str, **kwargs) -> requests.Response | None:
-    """GET/POST con reintentos ante 403/429/5xx. Devuelve None si es 404/422."""
+    """GET/POST con reintentos ante límites de velocidad y errores 5xx.
+
+    Devuelve None si el recurso no existe o no es accesible (404, 410, 422, 451 o
+    403 que no sea por límite de velocidad, p. ej. un repo bloqueado).
+    """
     for intento in range(1, MAX_REINTENTOS + 1):
-        resp = sesion.request(metodo, url, timeout=60, **kwargs)
+        try:
+            resp = sesion.request(metodo, url, timeout=60, **kwargs)
+        except (requests.ConnectionError, requests.Timeout) as err:
+            print(f"  [red] {type(err).__name__}: reintento {intento}/{MAX_REINTENTOS}",
+                  file=sys.stderr)
+            time.sleep(10 * intento)
+            continue
         if resp.status_code == 200:
             pausa_si_agotado(resp)
             return resp
         if resp.status_code in (404, 410, 422, 451):
             return None
-        if resp.status_code in (403, 429):
+        if es_limite(resp):
             espera = segundos_espera(resp, intento)
             print(f"  [límite] {resp.status_code}: espero {espera} s "
                   f"(intento {intento}/{MAX_REINTENTOS})", file=sys.stderr)
             time.sleep(espera)
             continue
+        if resp.status_code == 403:
+            return None
         if resp.status_code >= 500:
             time.sleep(5 * intento)
             continue
@@ -185,21 +209,48 @@ def obtener_repos(nombres: list[str], token: str | None, lote: int = 50) -> dict
                 print(f"  {i}/{len(nombres)} repos consultados")
         return resultado
 
+    errores: dict[str, int] = {}
     for inicio in range(0, len(nombres), lote):
         grupo = nombres[inicio:inicio + lote]
-        partes = []
-        for i, nombre in enumerate(grupo):
-            owner, repo = nombre.split("/", 1)
-            partes.append(f'r{i}: repository(owner: {_gql(owner)}, name: {_gql(repo)}) {{{CAMPOS_GRAPHQL}}}')
-        consulta = "query {\n" + "\n".join(partes) + "\n}"
-        resp = peticion(sesion, "POST", "https://api.github.com/graphql", json={"query": consulta})
-        datos = (resp.json().get("data") or {}) if resp is not None else {}
+        datos = _consulta_graphql(sesion, grupo, errores)
         for i, nombre in enumerate(grupo):
             nodo = datos.get(f"r{i}")
             if nodo:
                 resultado[nombre.lower()] = repo_desde_graphql(nodo)
-        print(f"  {min(inicio + lote, len(nombres))}/{len(nombres)} repos consultados")
+        hechos = min(inicio + lote, len(nombres))
+        if hechos % 1000 < lote or hechos == len(nombres):
+            print(f"  {hechos}/{len(nombres)} repos consultados")
+    if errores:
+        print(f"  Errores de GraphQL por tipo: {errores}")
     return resultado
+
+
+# Errores de GraphQL que afectan a un repo concreto y no se arreglan reintentando.
+ERRORES_PERMANENTES = {"NOT_FOUND", "FORBIDDEN"}
+
+
+def _consulta_graphql(sesion: requests.Session, grupo: list[str], errores: dict) -> dict:
+    """Pide un lote de repos por GraphQL. Reintenta si falla algo que no sea «no existe»."""
+    partes = []
+    for i, nombre in enumerate(grupo):
+        owner, repo = nombre.split("/", 1)
+        partes.append(f'r{i}: repository(owner: {_gql(owner)}, name: {_gql(repo)}) {{{CAMPOS_GRAPHQL}}}')
+    consulta = "query {\n" + "\n".join(partes) + "\n}"
+    for intento in range(1, 4):
+        resp = peticion(sesion, "POST", "https://api.github.com/graphql", json={"query": consulta})
+        cuerpo = resp.json() if resp is not None else {}
+        tipos = [e.get("type", "DESCONOCIDO") for e in cuerpo.get("errors") or []]
+        graves = [t for t in tipos if t not in ERRORES_PERMANENTES]
+        if cuerpo.get("data") is not None and not graves:
+            for t in tipos:
+                errores[t] = errores.get(t, 0) + 1
+            return cuerpo["data"]
+        print(f"  [GraphQL] lote fallido ({', '.join(sorted(set(graves))) or 'sin datos'}): "
+              f"reintento {intento}/3", file=sys.stderr)
+        time.sleep(20 * intento)
+    for t in graves or ["SIN_DATOS"]:
+        errores[t] = errores.get(t, 0) + 1
+    return (cuerpo.get("data") or {}) if cuerpo else {}
 
 
 def _gql(texto: str) -> str:

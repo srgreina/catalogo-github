@@ -4,7 +4,9 @@
 - Actualiza data/historico.json: fecha en que se vio cada repo por primera vez y
   sus estrellas en las últimas semanas.
 - Escribe data/novedades.json: repos que aparecen por primera vez esta semana.
-- Escribe docs/datos.json: versión reducida (campos cortos) que carga la web.
+- Escribe docs/datos.json: versión reducida (campos cortos) que carga la web, y
+  docs/detalles/00..ff.json: el resto de cada ficha, repartido por el SHA-1 del
+  nombre (la web descarga solo el fichero del repo que se abre).
 
 La primera ejecución solo crea la base del histórico: no marca novedades, porque
 todo sería «nuevo».
@@ -20,6 +22,7 @@ import hashlib
 import json
 import shutil
 from datetime import date, datetime, timedelta, timezone
+
 from comun import RAIZ, preparar_consola
 
 CATALOGO = RAIZ / "data" / "catalogo.json"
@@ -121,7 +124,7 @@ def main() -> None:
             novedades.append({"nombre": repo["nombre"], "url": repo["url"],
                               "descripcion": traducida, "tipos": repo["tipos"],
                               "estrellas": repo["estrellas"]})
-        if subida:
+        if subida and subida > 0:
             entrada["sb"] = subida
         repos_web.append(entrada)
 
