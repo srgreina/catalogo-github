@@ -1,4 +1,6 @@
-# CLAUDE.md — catalogo-github
+# CLAUDE.md
+
+This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
 Catálogo semanal de servidores MCP, skills de Claude y programas públicos de GitHub.
 Web: https://srgreina.github.io/catalogo-github/ (repo público `srgreina/catalogo-github`).
@@ -25,6 +27,52 @@ El workflow `.github/workflows/semanal.yml` (lunes 03:37 UTC y lanzable a mano) 
 | `generar_web.py` | `catalogo.json` + `data/historico.json` | `docs/datos.json`, `docs/detalles/*.json`, `data/novedades.json`, histórico |
 
 `comun.py` reúne peticiones con reintentos, GraphQL por lotes, filtros de descarte y utilidades.
+
+## Comandos y verificación
+
+No hay tests ni linter. Se verifica así:
+
+```bash
+python -m py_compile scripts/*.py                    # sintaxis
+python scripts/recopilar_github.py --limite 50       # un script, sin token y con límite
+python scripts/unir.py --max-consultas 20            # sin token: REST de uno en uno (60/h)
+python scripts/traducir.py --limite 50               # requiere ctranslate2 + sentencepiece
+python -m http.server -d docs                        # ver la web en http://localhost:8000
+```
+
+Los scripts se ejecutan desde la raíz o desde `scripts/` (importan `comun` por ruta
+relativa al propio script). `GITHUB_TOKEN` en el entorno activa GraphQL y 30 búsquedas/min.
+
+Workflow y resultados en GitHub:
+
+```bash
+gh workflow run semanal.yml -R srgreina/catalogo-github
+gh run list -R srgreina/catalogo-github -L 3
+gh run view <id> -R srgreina/catalogo-github --log | grep -E "Encontrados:|Total unido|Traducciones nuevas|Repos en la web|Errores de GraphQL"
+```
+
+Esas líneas de resumen las imprime cada script al terminar; son la forma de comprobar
+una ejecución real.
+
+## Contratos entre ficheros
+
+**Campos de `docs/datos.json`** (los escribe `generar_web.py`, los lee `docs/app.js`; cambiar
+un nombre exige cambiarlo en los dos):
+
+| Lista (`datos.json`) | | Ficha (`detalles/xx.json`) | |
+|---|---|---|---|
+| `n` nombre `owner/repo` | `l` licencia SPDX | `f` forks | `o` descripción original |
+| `d` descripción (es) | `lt` libre/otra/sin_licencia | `i` incidencias | `tp` topics |
+| `t` tipos | `c` creado (AAAA-MM-DD) | `sp` puntos | `lg` lenguaje |
+| `m` dominios (sin «otros») | `p` último push | `mo` motivos | `w` web |
+| `s` estrellas | `sm` semáforo v/a/r | | |
+| `fu` fuentes | `org`, `nv`, `sb` opcionales | | |
+
+**Novedades y subidas** (`generar_web.py` + `app.js`): `historico.json` guarda `base` (fecha
+de la primera ejecución) y, por repo, `primera` aparición y las últimas 8 instantáneas de
+estrellas. Un repo es nuevo (`nv`) si `primera > base` y tiene menos de 7 días; `sb` son
+las estrellas ganadas desde la instantánea de hace ≥6 días (solo si es positiva). Mientras
+`primera_semana` sea verdadero, la web explica que aún no hay novedades.
 
 ## Reglas del catálogo (decididas por el usuario)
 
@@ -69,5 +117,3 @@ El workflow `.github/workflows/semanal.yml` (lunes 03:37 UTC y lanzable a mano) 
 - La sesión puede activar `.venv` (solo `requests`, `ctranslate2`, `sentencepiece`).
   Playwright (para capturas de la web con Edge, `channel="msedge"`) está en el Python
   general: `C:\Users\srgre\AppData\Local\Programs\Python\Python312\python.exe`.
-- Probar sin token: `recopilar_github.py --limite 50`, `unir.py --max-consultas 20`,
-  `traducir.py --limite 50`. Ver la web: `python -m http.server -d docs`.
