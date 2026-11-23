@@ -4,6 +4,7 @@
 - Actualiza data/historico.json: fecha en que se vio cada repo por primera vez y
   sus estrellas en las últimas ejecuciones (una al mes).
 - Escribe data/novedades.json: repos que aparecen por primera vez en el último mes.
+- Escribe docs/ideas.json: panorama de huecos por tema y dominio (ver ideas.py).
 - Escribe docs/datos.json: versión reducida (campos cortos) que carga la web, y
   docs/detalles/00..ff.json: el resto de cada ficha, repartido por el SHA-1 del
   nombre (la web descarga solo el fichero del repo que se abre).
@@ -25,12 +26,14 @@ import sys
 from datetime import date, datetime, timedelta, timezone
 
 from comun import RAIZ, guardar_por_lineas, preparar_consola
+from ideas import calcular as calcular_ideas
 
 CATALOGO = RAIZ / "data" / "catalogo.json"
 HISTORICO = RAIZ / "data" / "historico.json"
 NOVEDADES = RAIZ / "data" / "novedades.json"
 WEB = RAIZ / "docs" / "datos.json"
 DETALLES = RAIZ / "docs" / "detalles"
+IDEAS = RAIZ / "docs" / "ideas.json"
 INSTANTANEAS_GUARDADAS = 8
 # La ejecución es mensual (el mes más corto: 28 días). Con 25 días, lo visto en la
 # ejecución anterior ya no cuenta como novedad, y una ejecución manual a mitad de
@@ -171,6 +174,15 @@ def main() -> None:
         "primera_ejecucion": base == hoy_txt,
         "repos": repos_web,
     }, ensure_ascii=False, separators=(",", ":")), encoding="utf-8")
+
+    # Panorama de ideas (huecos por tema, resumen por dominio): solo cuentas, sin IA.
+    panorama = calcular_ideas(
+        datos["repos"],
+        {r["n"].lower(): r["sb"] for r in repos_web if r.get("sb")},
+        {r["n"].lower() for r in repos_web if r.get("nv")})
+    panorama["generado"] = ahora.isoformat(timespec="minutes")
+    IDEAS.write_text(json.dumps(panorama, ensure_ascii=False, separators=(",", ":")),
+                     encoding="utf-8")
 
     shutil.rmtree(DETALLES, ignore_errors=True)
     DETALLES.mkdir(parents=True)

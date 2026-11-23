@@ -138,6 +138,7 @@ function ordenar(lista) {
 
 function actualizar() {
   if (!estado.datos) return;
+  if (estado.pestana === "ideas") { guardarFiltros(); return; }
   estado.resultado = ordenar(filtrar());
   guardarFiltros();
   estado.mostrados = 0;
@@ -189,7 +190,13 @@ function pintarAviso() {
 
 function pintarResumen() {
   const total = estado.resultado.length;
-  $("#resumen").textContent = `${numero(total)} ${total === 1 ? "repo" : "repos"}`;
+  let texto = `${numero(total)} ${total === 1 ? "repo" : "repos"}`;
+  if (total) {
+    const de = (t) => estado.resultado.filter((r) => r.t.includes(t)).length;
+    const libres = Math.round(100 * estado.resultado.filter((r) => r.lt === "libre").length / total);
+    texto += ` · ${numero(de("mcp"))} MCP · ${numero(de("skill"))} skills · ${numero(de("programa"))} programas · ${libres} % de uso libre`;
+  }
+  $("#resumen").textContent = texto;
   const activos = contarFiltros();
   $("#num-filtros").textContent = activos || "";
 }
@@ -245,7 +252,7 @@ function leerFiltros() {
   estado.orden = opcion("#orden", p.get("o") || "estrellas", "estrellas");
   estado.ordenSkills = p.get("os") === "subida" ? "subida" : "estrellas";
   estado.soloFavoritos = p.get("fav") === "1";
-  ponerPestana(["novedades", "skills"].includes(p.get("v")) ? p.get("v") : "catalogo");
+  ponerPestana(["novedades", "skills", "ideas"].includes(p.get("v")) ? p.get("v") : "catalogo");
 
   $("#buscar").value = estado.texto;
   document.querySelectorAll("[data-filtro]").forEach((grupo) => {
@@ -267,6 +274,18 @@ function ponerPestana(nombre) {
     b.setAttribute("aria-selected", String(b.dataset.pestana === nombre)));
   $("#subvista-skills").hidden = nombre !== "skills";
   $(".orden").hidden = nombre === "skills";
+  // La pestaña Ideas no usa los filtros ni la lista.
+  const ideas = nombre === "ideas";
+  for (const sel of ["#filtros", ".barra", ".barra-resultados", "#lista", "#centinela"]) {
+    $(sel).hidden = ideas;
+  }
+  $("#vista-ideas").hidden = !ideas;
+  document.querySelector(".marco").classList.toggle("sin-filtros", ideas);
+  if (ideas) {
+    $("#aviso-vista").hidden = true;
+    abrirFiltros(false);
+    cargarIdeas();
+  }
 }
 
 /* ---------- Favoritos ---------- */
@@ -505,6 +524,207 @@ $("#ver-resultados").addEventListener("click", () => abrirFiltros(false));
 $("#fondo-hoja").addEventListener("click", () => abrirFiltros(false));
 document.addEventListener("keydown", (ev) => {
   if (ev.key === "Escape" && $("#filtros").classList.contains("abierto")) abrirFiltros(false);
+});
+
+/* ---------- Ideas ---------- */
+
+const ETIQUETA_TIPO = {
+  mcp: ["servidor MCP", "servidores MCP"], skill: ["skill", "skills"], programa: ["programa", "programas"],
+};
+const PETICION_IDEAS = `Con esta información, respóndeme en español sencillo:
+1. Qué cubren ya estos programas y en qué se parecen.
+2. Qué huecos ves: qué falta o qué nadie hace bien todavía.
+3. Cinco ideas concretas de programas que yo podría crear. De cada una dime: para qué sirve, a quién ayuda, de cuál de los anteriores podría partir o con cuáles combinarla, y por dónde empezar.
+4. Cuál de las cinco empezarías primero y por qué.`;
+
+const cuenta = (n, tipo) => `${numero(n)} ${ETIQUETA_TIPO[tipo][n === 1 ? 0 : 1]}`;
+
+/* Un hueco: hay mucho de un tipo y, en proporción, poco de otro (calculado en ideas.py). */
+function textoHueco(h) {
+  const otros = ["mcp", "skill", "programa"].filter((t) => t !== h.falta && h.n[t] > 0);
+  const hay = otros.map((t) => cuenta(h.n[t], t)).join(" y ");
+  const pocos = h.n[h.falta] === 0 ? `ningún ${ETIQUETA_TIPO[h.falta][0]}` : `solo ${cuenta(h.n[h.falta], h.falta)}`;
+  return `${hay}, pero ${pocos}`;
+}
+
+function ideaHueco(h) {
+  return h.falta === "mcp"
+    ? `Idea: crear un servidor MCP de «${h.tema}».`
+    : `Idea: crear una skill de «${h.tema}».`;
+}
+
+function itemHueco(h) {
+  return `<li><span class="tema">${esc(h.tema)}</span>: ${esc(textoHueco(h))}.
+    <span class="idea">${esc(ideaHueco(h))}
+    <button type="button" class="enlace" data-ver-tema="${esc(h.tema)}">Ver repos</button></span></li>`;
+}
+
+function itemRepoIdea(r) {
+  const d = (r.d || "").length > 110 ? r.d.slice(0, 107) + "…" : (r.d || "");
+  return `<li><a href="https://github.com/${esc(r.n)}" target="_blank" rel="noopener">${esc(r.n)}</a> ★ ${numero(r.s)}${d ? ` — ${esc(d)}` : ""}</li>`;
+}
+
+function tarjetaDominio(clave, d) {
+  const pct = d.total ? Math.round(100 * d.libres / d.total) : 0;
+  const lista = (repos, vacio) => repos.length
+    ? `<ol>${repos.map(itemRepoIdea).join("")}</ol>` : `<p class="vacio-corto">${vacio}</p>`;
+  return `<article class="idea-dominio">
+    <h3>${esc(DOMINIOS[clave])}</h3>
+    <p class="cifras">${numero(d.total)} repos: ${cuenta(d.tipos.mcp, "mcp")} · ${cuenta(d.tipos.skill, "skill")} · ${cuenta(d.tipos.programa, "programa")}.
+      ${pct} % de uso libre · ${numero(d.verdes)} en verde.</p>
+    <h4>Más destacados</h4>${lista(d.mejores, "Ninguno.")}
+    <h4>Novedades del mes</h4>${lista(d.nuevos, "Ninguna este mes.")}
+    <h4>Huecos</h4>${d.huecos.length ? `<ul class="lista-huecos">${d.huecos.map(itemHueco).join("")}</ul>`
+      : '<p class="vacio-corto">No se ha detectado ninguno.</p>'}
+    <div class="acciones">
+      <button type="button" class="boton" data-ideas-dominio="${clave}">Pedir ideas a Claude sobre este dominio</button>
+      <button type="button" class="enlace" data-ver-dominio="${clave}">Ver todos en el catálogo</button>
+    </div>
+  </article>`;
+}
+
+let ideasDatos = null;
+
+async function cargarIdeas() {
+  const cont = $("#ideas-contenido");
+  if (ideasDatos) return;
+  cont.innerHTML = '<p class="vacio-corto">Cargando…</p>';
+  try {
+    const resp = await fetch("ideas.json");
+    if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+    ideasDatos = await resp.json();
+  } catch (err) {
+    cont.innerHTML = `<p class="vacio">No se ha podido cargar el panorama de ideas (${esc(err.message)}). Vuelve a abrir esta pestaña para reintentarlo.</p>`;
+    return;
+  }
+  const falta = (tipo) => ideasDatos.huecos.filter((h) => h.falta === tipo);
+  const cruces = ideasDatos.combinaciones.map((c) =>
+    `<li>${c.dominios.map((d) => esc(DOMINIOS[d])).join(" + ")}: <strong>${numero(c.total)}</strong> ${c.total === 1 ? "repo" : "repos"}</li>`).join("");
+  cont.innerHTML = `
+    <p class="ideas-intro">Panorama para buscar ideas de programas: qué hay en cada dominio y dónde faltan cosas.
+      Son <strong>solo cuentas sobre el catálogo</strong> (se recalculan cada mes), no una opinión de ninguna IA.
+      Un «hueco» es un tema con mucho de un tipo y poco de otro, y cada uno es una posible idea: crear lo que falta.
+      Para ideas más elaboradas, usa «Ideas con Claude» en cualquier búsqueda del catálogo.</p>
+
+    <h2>Qué falta: huecos entre tipos</h2>
+    <div class="huecos-grupos">
+      <div><p>Hay skills o programas, pero pocos servidores MCP</p>
+        <ul class="lista-huecos">${falta("mcp").map(itemHueco).join("")}</ul></div>
+      <div><p>Hay servidores MCP o programas, pero pocas skills</p>
+        <ul class="lista-huecos">${falta("skill").map(itemHueco).join("")}</ul></div>
+    </div>
+
+    <h2>Por dominio</h2>
+    <div class="tarjetas-dominio">${Object.entries(ideasDatos.dominios).map(([c, d]) => tarjetaDominio(c, d)).join("")}</div>
+
+    <h2>Cruces entre dominios</h2>
+    <p class="ideas-intro">Cuántos repos tocan dos dominios a la vez. Los números más bajos son terreno poco explorado.</p>
+    <ul class="cruces">${cruces}</ul>`;
+}
+
+/* Del panorama al catálogo: se cambia la dirección y lo demás lo hace «hashchange». */
+function irAlCatalogo(parametros) {
+  location.hash = new URLSearchParams(parametros).toString();
+}
+
+$("#ideas-contenido").addEventListener("click", (ev) => {
+  const tema = ev.target.closest("[data-ver-tema]");
+  if (tema) return irAlCatalogo({ q: tema.dataset.verTema });
+  const dominio = ev.target.closest("[data-ver-dominio]");
+  if (dominio) return irAlCatalogo({ dominio: dominio.dataset.verDominio });
+  const pedir = ev.target.closest("[data-ideas-dominio]");
+  if (pedir) copiarParaClaude(promptDominio(pedir.dataset.ideasDominio));
+});
+
+/* ---------- Ideas con Claude: texto para pegar en Claude ---------- */
+
+function lineaRepo(r) {
+  const tipos = r.t.map((t) => TIPOS[t] || t).join("/");
+  const desc = (r.d || "sin descripción").replace(/\s+/g, " ");
+  return `- ${r.n} (★ ${numero(r.s)}, ${tipos}, ${r.l ? "licencia " + r.l : "sin licencia"}, semáforo ${SEMAFORO[r.sm]}): ${desc.length > 160 ? desc.slice(0, 157) + "…" : desc}`;
+}
+
+function describirBusqueda() {
+  const partes = [];
+  if (estado.texto) partes.push(`texto «${estado.texto}»`);
+  const f = estado.filtros;
+  if (f.tipo.size) partes.push("tipo: " + [...f.tipo].map((t) => TIPOS[t] || t).join(" o "));
+  if (f.dominio.size) partes.push("dominio: " + [...f.dominio].map((d) => DOMINIOS[d] || d).join(" o "));
+  if (f.semaforo.size) partes.push("semáforo: " + [...f.semaforo].map((v) => SEMAFORO[v]).join(" o "));
+  if (estado.licencia) partes.push("licencia: " + LICENCIAS[estado.licencia]);
+  if (estado.estrellas) partes.push(`al menos ${numero(estado.estrellas)} estrellas`);
+  if (estado.actividad) partes.push(`con actividad en los últimos ${estado.actividad} días`);
+  if (estado.pestana === "novedades") partes.push("solo novedades del último mes");
+  if (estado.pestana === "skills") partes.push("solo skills");
+  if (estado.soloFavoritos) partes.push("solo mis favoritos");
+  return partes.join("; ");
+}
+
+function promptBusqueda() {
+  const lista = estado.resultado.slice(0, 25);
+  const de = (t) => estado.resultado.filter((r) => r.t.includes(t)).length;
+  const criterio = describirBusqueda();
+  return `Estoy buscando ideas para crear programas. He consultado un catálogo de GitHub de servidores MCP, skills de Claude y programas${criterio ? `, con esta búsqueda: ${criterio}` : ""}.
+
+Resultados: ${numero(estado.resultado.length)} repos (${numero(de("mcp"))} servidores MCP, ${numero(de("skill"))} skills, ${numero(de("programa"))} programas). Estos son los ${lista.length} primeros:
+
+${lista.map(lineaRepo).join("\n")}
+
+${PETICION_IDEAS}`;
+}
+
+function promptDominio(clave) {
+  const d = ideasDatos.dominios[clave];
+  const lista = estado.datos.repos.filter((r) => r.m.includes(clave)).sort((a, b) => b.s - a.s).slice(0, 25);
+  const huecos = d.huecos.map((h) => `- ${h.tema}: ${textoHueco(h)}.`).join("\n");
+  return `Estoy buscando ideas para crear programas en el dominio «${DOMINIOS[clave]}». He consultado un catálogo de GitHub de servidores MCP, skills de Claude y programas.
+
+En este dominio hay ${numero(d.total)} repos (${cuenta(d.tipos.mcp, "mcp")}, ${cuenta(d.tipos.skill, "skill")}, ${cuenta(d.tipos.programa, "programa")}). Estos son los ${lista.length} más populares:
+
+${lista.map(lineaRepo).join("\n")}
+${huecos ? `\nHuecos detectados automáticamente (temas con muchos repos de un tipo y pocos de otro):\n${huecos}\n` : ""}
+${PETICION_IDEAS}`;
+}
+
+async function copiarTexto(texto) {
+  try {
+    await navigator.clipboard.writeText(texto);
+    return true;
+  } catch { /* sin permiso o sin HTTPS: se prueba el método antiguo */ }
+  const caja = document.createElement("textarea");
+  caja.value = texto;
+  caja.style.cssText = "position:fixed;opacity:0;top:0;left:0";
+  document.body.appendChild(caja);
+  caja.select();
+  let ok = false;
+  try { ok = document.execCommand("copy"); } catch { /* se ignora */ }
+  caja.remove();
+  return ok;
+}
+
+let temporizadorAviso;
+function mostrarAviso(html, ms = 10000) {
+  const aviso = $("#toast");
+  aviso.innerHTML = html;
+  aviso.hidden = false;
+  clearTimeout(temporizadorAviso);
+  temporizadorAviso = setTimeout(() => { aviso.hidden = true; }, ms);
+}
+
+async function copiarParaClaude(texto) {
+  if (await copiarTexto(texto)) {
+    mostrarAviso('Copiado. Pégalo en Claude para recibir las ideas. <a href="https://claude.ai/new" target="_blank" rel="noopener">Abrir Claude</a>');
+  } else {
+    window.prompt("No se ha podido copiar solo. Copia este texto (Ctrl+C) y pégalo en Claude:", texto);
+  }
+}
+
+$("#ideas-claude").addEventListener("click", () => {
+  if (!estado.resultado.length) {
+    mostrarAviso("No hay resultados: cambia la búsqueda o quita filtros para pedir ideas.", 5000);
+    return;
+  }
+  copiarParaClaude(promptBusqueda());
 });
 
 cargar();

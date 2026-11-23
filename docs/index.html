@@ -22,6 +22,7 @@
     <button role="tab" aria-selected="true" data-pestana="catalogo" id="tab-catalogo">Catálogo</button>
     <button role="tab" aria-selected="false" data-pestana="novedades" id="tab-novedades">Novedades del mes <b id="num-novedades"></b></button>
     <button role="tab" aria-selected="false" data-pestana="skills" id="tab-skills">Skills</button>
+    <button role="tab" aria-selected="false" data-pestana="ideas" id="tab-ideas">Ideas</button>
   </nav>
 </header>
 
@@ -120,6 +121,7 @@
         <button type="button" data-orden-skills="estrellas" aria-pressed="true">Más usadas</button>
         <button type="button" data-orden-skills="subida" aria-pressed="false">En subida</button>
       </div>
+      <button class="enlace" id="ideas-claude" type="button" title="Copia un texto con estos resultados para pedirle ideas de programas a Claude">Ideas con Claude</button>
       <button class="enlace" id="descargar" type="button" title="Descarga en CSV (se abre con Excel) los repos que se están viendo">Descargar CSV</button>
       <label class="orden">Ordenar
         <select id="orden">
@@ -136,6 +138,10 @@
     <p class="aviso-vista" id="aviso-vista" hidden></p>
     <ol class="lista" id="lista"></ol>
     <div id="centinela" aria-hidden="true"></div>
+
+    <section class="vista-ideas" id="vista-ideas" hidden aria-label="Ideas">
+      <div id="ideas-contenido"></div>
+    </section>
   </main>
 </div>
 
@@ -145,6 +151,7 @@
 </footer>
 
 <div class="fondo-hoja" id="fondo-hoja" hidden></div>
+<div class="toast" id="toast" role="status" aria-live="polite" hidden></div>
 <script src="app.js"></script>
 </body>
 </html>

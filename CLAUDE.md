@@ -25,7 +25,7 @@ a mano con la casilla «completa») ejecuta en orden:
 | `unir.py` | los tres anteriores + GraphQL para repos nuevos + `data/descartes.json` | `data/raw/unido.json`, descartes |
 | `clasificar.py` | `unido.json` | `data/catalogo.json` (tipo, dominio, licencia, semáforo) |
 | `traducir.py` | `catalogo.json` + `data/cache_traducciones.json` | los mismos |
-| `generar_web.py` | `catalogo.json` + `data/historico.json` | `docs/datos.json`, `docs/detalles/*.json`, `data/novedades.json`, histórico |
+| `generar_web.py` | `catalogo.json` + `data/historico.json` | `docs/datos.json`, `docs/detalles/*.json`, `docs/ideas.json` (vía `ideas.py`), `data/novedades.json`, histórico |
 
 `comun.py` reúne peticiones con reintentos, GraphQL por lotes, filtros de descarte y utilidades.
 
@@ -115,7 +115,7 @@ novedades.
   `data/cache_traducciones.json`, `data/estado_github.json`, `data/descartes.json`
   (los actualiza el workflow con un commit).
 - Fuera del repo (`.gitignore`): `data/raw/`, `data/catalogo.json`, `docs/datos.json`,
-  `docs/detalles/`, `.venv/`, `.argos/`. La web se publica con `upload-pages-artifact` +
+  `docs/detalles/`, `docs/ideas.json`, `.venv/`, `.argos/`. La web se publica con `upload-pages-artifact` +
   `deploy-pages` (Pages en modo «GitHub Actions»), no desde la rama.
 - No subir datos de pruebas locales: sobrescribirían el histórico real.
 
@@ -144,6 +144,15 @@ novedades.
   también en `localStorage`. Todo acceso a `localStorage` va con try/catch (`leerLocal`).
   El CSV lleva BOM, separador `;` y marca con `'` los textos que empiezan por `=+-@`.
   Los datos de la web se limpian de entidades HTML al recopilar (`arreglar_texto`), no en JS.
+- **Ideas** (`scripts/ideas.py`, sin IA): los «huecos» comparan la *proporción* de cada
+  tipo (repos del tema / repos de ese tipo en todo el catálogo), no las cifras absolutas:
+  hay el doble de MCP que de skills y con cifras todos saldrían en el mismo sentido. Los
+  temas genéricos (lenguajes, marcas, herramientas) se descartan con `TEMAS_GENERICOS` y
+  `RE_GENERICO`: si salen temas poco útiles, ampliar esas listas. La web
+  (`cargarIdeas` en `app.js`) pinta `ideas.json`; «Ideas con Claude» (`promptBusqueda`,
+  `promptDominio`) solo copia un texto al portapapeles, no llama a ninguna API. La pestaña
+  Ideas oculta filtros y lista; `actualizar()` sale pronto en ella (si no, el centinela
+  oculto pintaría los 43.000 repos).
 - **Pruebas de la web en local**: no ejecutar `generar_web.py` tal cual (reescribe
   `data/historico.json`, que está versionado); usar un script que cambie `HISTORICO`,
   `NOVEDADES`, `WEB` y `DETALLES` a una carpeta temporal.

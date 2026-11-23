@@ -96,6 +96,15 @@ actividad, estrellas del mes, nombre; **descarga de los resultados en CSV**
 y, en los servidores del registro oficial MCP, el bloque «Cómo usarlo» con su
 paquete (npm, pypi…) y su servidor remoto.
 
+**Pestaña «Ideas»**: panorama para buscar ideas de programas. No usa IA, son solo
+cuentas que calcula `scripts/ideas.py` cada mes (`docs/ideas.json`): por dominio, cuántos
+repos hay de cada tipo, los más destacados, las novedades y los **huecos** (temas con
+muchos repos de un tipo y, en proporción, pocos de otro, p. ej. muchas skills de un tema
+y casi ningún servidor MCP), más los cruces entre dominios. Además, el botón **«Ideas con
+Claude»** (en la barra de resultados de cualquier búsqueda, y por dominio en la pestaña
+Ideas) copia al portapapeles un texto con los 25 mejores resultados y una petición de
+ideas, para pegarlo en Claude.
+
 Para verla en local: `python -m http.server -d docs` y abrir http://localhost:8000.
 Necesita `docs/datos.json` y `docs/detalles/` (`python scripts/generar_web.py`; ojo:
 escribe también `data/historico.json`, que no hay que subir).
