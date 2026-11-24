@@ -112,9 +112,11 @@
 
   <main class="contenido">
     <div class="barra">
-      <input type="search" id="buscar" placeholder="Buscar por nombre, descripción o topic" aria-label="Buscar" autocomplete="off">
+      <input type="search" id="buscar" placeholder="Buscar por nombre, descripción o topic (también en inglés)" aria-label="Buscar" autocomplete="off">
       <button class="boton abrir-filtros" id="abrir-filtros" type="button">Filtros <b id="num-filtros"></b></button>
     </div>
+
+    <p class="amplia" id="amplia" hidden></p>
 
     <div class="barra-resultados">
       <p id="resumen" aria-live="polite"></p>
@@ -127,6 +129,7 @@
       <label class="orden">Ordenar
         <select id="orden">
           <option value="estrellas">Más estrellas</option>
+          <option value="relevancia">Más relevantes</option>
           <option value="semaforo">Semáforo (verdes primero)</option>
           <option value="actividad">Actividad reciente</option>
           <option value="subida">Más estrellas este mes</option>

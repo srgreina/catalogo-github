@@ -516,3 +516,9 @@ details.original p { margin: 6px 0 0; }
 }
 .toast a { color: var(--senal); font-weight: 600; }
 @media (prefers-color-scheme: dark) { .toast { background: var(--senal); color: var(--senal-tinta); } .toast a { color: var(--senal-tinta); } }
+
+/* ---------- Búsqueda ampliada ---------- */
+
+.amplia { margin: 8px 0 0; font-size: .88rem; color: var(--gris); }
+.amplia strong { color: var(--tinta); font-weight: 600; }
+.amplia .enlace { padding: 0 0 0 6px; font-size: inherit; }

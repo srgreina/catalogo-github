@@ -90,6 +90,13 @@ GitHub Pages. `python scripts/generar_web.py` prepara sus datos:
   últimas ejecuciones. De ahí salen las **novedades del mes**
   (`data/novedades.json`) y las **skills en subida** (estrellas ganadas en el mes).
 
+**Buscador en español e inglés**: lo que escribes en español se amplía con equivalentes en
+inglés (`docs/glosario.json`, ~380 términos revisados a mano: «finanzas» → finance, financial,
+fintech) y se busca también en los topics y en la descripción original (`docs/indice_en.json`,
+que la web carga en segundo plano). Bajo el cuadro se ve qué se ha ampliado y un botón
+«Solo español». El orden «Más relevantes» puntúa más el nombre que la descripción y los topics.
+Para añadir términos basta con editar el glosario.
+
 Funciones de la web: buscador y filtros (que se guardan en la dirección `#…` para
 compartirlos y se recuerdan en el navegador), orden por estrellas, semáforo,
 actividad, estrellas del mes, nombre; **descarga de los resultados en CSV**

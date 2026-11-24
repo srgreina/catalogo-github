@@ -4,6 +4,7 @@
 - Actualiza data/historico.json: fecha en que se vio cada repo por primera vez y
   sus estrellas en las últimas ejecuciones (una al mes).
 - Escribe data/novedades.json: repos que aparecen por primera vez en el último mes.
+- Escribe docs/indice_en.json: texto original y topics de cada repo, para el buscador.
 - Escribe docs/ideas.json: panorama de huecos por tema y dominio (ver ideas.py).
 - Escribe docs/datos.json: versión reducida (campos cortos) que carga la web, y
   docs/detalles/00..ff.json: el resto de cada ficha, repartido por el SHA-1 del
@@ -21,8 +22,10 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
+import re
 import shutil
 import sys
+import unicodedata
 from datetime import date, datetime, timedelta, timezone
 
 from comun import RAIZ, guardar_por_lineas, preparar_consola
@@ -34,6 +37,8 @@ NOVEDADES = RAIZ / "data" / "novedades.json"
 WEB = RAIZ / "docs" / "datos.json"
 DETALLES = RAIZ / "docs" / "detalles"
 IDEAS = RAIZ / "docs" / "ideas.json"
+INDICE_EN = RAIZ / "docs" / "indice_en.json"
+MAX_ORIGINAL = 300    # caracteres de la descripción original que se indexan
 INSTANTANEAS_GUARDADAS = 8
 # La ejecución es mensual (el mes más corto: 28 días). Con 25 días, lo visto en la
 # ejecución anterior ya no cuenta como novedad, y una ejecución manual a mitad de
@@ -49,6 +54,16 @@ COLOR = {"verde": "v", "ambar": "a", "rojo": "r"}
 def trozo(clave: str) -> str:
     """Fichero de detalles (00..ff) en el que va un repo. La web usa la misma regla."""
     return hashlib.sha1(clave.encode("utf-8")).hexdigest()[:2]
+
+
+def a_busqueda(texto: str) -> str:
+    """Texto listo para buscar: sin tildes, en minúsculas y con espacios en vez de signos.
+
+    La web (`limpiar` en app.js) aplica lo mismo a lo que escribe el usuario.
+    """
+    s = unicodedata.normalize("NFD", texto or "")
+    s = "".join(c for c in s if unicodedata.category(c) != "Mn").lower()
+    return re.sub(r"[\W_]+", " ", s).strip()
 
 
 def solo_fecha(valor: str | None) -> str | None:
@@ -93,6 +108,7 @@ def main() -> None:
     historico["total"] = len(datos["repos"])
 
     repos_web, novedades = [], []
+    indice_en: list[str] = []      # mismo orden que repos_web (la web los empareja por posición)
     detalles: dict[str, dict] = {}
     for repo in datos["repos"]:
         clave = repo["nombre"].lower()
@@ -125,6 +141,10 @@ def main() -> None:
         }
         if repo.get("tipo_propietario") == "Organization":
             entrada["org"] = 1
+        # Texto extra para el buscador: descripción original (si no está ya en español)
+        # y topics, que están en inglés. Va en un fichero aparte que la web carga después.
+        extra = [] if repo.get("idioma") == "es" else [original[:MAX_ORIGINAL]]
+        indice_en.append(a_busqueda(" ".join(extra + list(repo.get("topics") or []))))
         # Ficha: se descarga solo al abrir el repo.
         detalle = {
             "f": repo.get("forks", 0),
@@ -183,6 +203,9 @@ def main() -> None:
     panorama["generado"] = ahora.isoformat(timespec="minutes")
     IDEAS.write_text(json.dumps(panorama, ensure_ascii=False, separators=(",", ":")),
                      encoding="utf-8")
+
+    INDICE_EN.write_text(json.dumps(indice_en, ensure_ascii=False, separators=(",", ":")),
+                         encoding="utf-8")
 
     shutil.rmtree(DETALLES, ignore_errors=True)
     DETALLES.mkdir(parents=True)

@@ -26,7 +26,7 @@ a mano con la casilla «completa») ejecuta en orden:
 | `unir.py` | los cuatro anteriores + GraphQL para repos nuevos + `data/descartes.json` | `data/raw/unido.json`, descartes |
 | `clasificar.py` | `unido.json` | `data/catalogo.json` (tipo, dominio, licencia, semáforo) |
 | `traducir.py` | `catalogo.json` + `data/cache_traducciones.json` | los mismos |
-| `generar_web.py` | `catalogo.json` + `data/historico.json` | `docs/datos.json`, `docs/detalles/*.json`, `docs/ideas.json` (vía `ideas.py`), `data/novedades.json`, histórico |
+| `generar_web.py` | `catalogo.json` + `data/historico.json` | `docs/datos.json`, `docs/detalles/*.json`, `docs/ideas.json` (vía `ideas.py`), `docs/indice_en.json`, `data/novedades.json`, histórico |
 
 `comun.py` reúne peticiones con reintentos, GraphQL por lotes, filtros de descarte y utilidades.
 
@@ -116,7 +116,7 @@ novedades.
   `data/cache_traducciones.json`, `data/estado_github.json`, `data/descartes.json`
   (los actualiza el workflow con un commit).
 - Fuera del repo (`.gitignore`): `data/raw/`, `data/catalogo.json`, `docs/datos.json`,
-  `docs/detalles/`, `docs/ideas.json`, `.venv/`, `.argos/`. La web se publica con `upload-pages-artifact` +
+  `docs/detalles/`, `docs/ideas.json`, `docs/indice_en.json`, `.venv/`, `.argos/`. La web se publica con `upload-pages-artifact` +
   `deploy-pages` (Pages en modo «GitHub Actions»), no desde la rama.
 - No subir datos de pruebas locales: sobrescribirían el histórico real.
 
@@ -150,6 +150,19 @@ novedades.
   también en `localStorage`. Todo acceso a `localStorage` va con try/catch (`leerLocal`).
   El CSV lleva BOM, separador `;` y marca con `'` los textos que empiezan por `=+-@`.
   Los datos de la web se limpian de entidades HTML al recopilar (`arreglar_texto`), no en JS.
+- **Búsqueda en español e inglés** (`app.js`: `interpretar`, `coincide`, `puntuar`):
+  `docs/glosario.json` (escrito a mano, se commitea) mapea español → equivalentes en inglés.
+  Las alternativas son *inicio de palabra*; con `!` al final, *palabra exacta* (`"map!"`).
+  Se prefieren frases a palabras sueltas para no meter ruido: «ingeniería» NO es *engineering*
+  (el 75 % eran prompt/software engineering) sino *civil engineering*, *structural engineering*…
+  `docs/indice_en.json` (descripción original + topics, `a_busqueda` en `generar_web.py`) va
+  **alineado por posición** con `datos.json` (si las longitudes no coinciden, la web lo ignora);
+  `limpiar` (JS) y `a_busqueda` (Python) deben normalizar igual. Se evita la regex Unicode
+  `\p{L}\p{N}` en `limpiar` (4 veces más lenta). Los textos de 40.000 repos se preparan en
+  segundo plano por trozos (`prepararTextos`) y glosario/índice se piden tras pintar la lista,
+  para no retrasar la carga. Medido con datos reales: «finanzas» 69 → 562 repos, «deporte»
+  7 → 104. Otros idiomas se descartaron: el 88 % de las descripciones ya es inglés y el chino,
+  ruso y japonés ya se traducen al español.
 - **Ideas** (`scripts/ideas.py`, sin IA): los «huecos» comparan la *proporción* de cada
   tipo (repos del tema / repos de ese tipo en todo el catálogo), no las cifras absolutas:
   hay el doble de MCP que de skills y con cifras todos saldrían en el mismo sentido. Los

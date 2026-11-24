@@ -33,7 +33,11 @@ const estado = {
   licencia: "",
   resultado: [],
   mostrados: 0,
+  ampliar: true,     // ampliar la búsqueda con equivalentes en inglés
+  grupos: [],        // la búsqueda ya interpretada (ver «interpretar»)
 };
+let glosario = null;   // español → equivalentes en inglés (docs/glosario.json)
+let indiceEn = null;   // texto original y topics de cada repo, en el mismo orden que datos.json
 const hoy = Date.now();
 
 /* ---------- Utilidades ---------- */
@@ -50,6 +54,23 @@ function guardarLocal(clave, valor) {
 }
 
 const normalizar = (s) => String(s ?? "").normalize("NFD").replace(/\p{Diacritic}/gu, "").toLowerCase();
+
+/* Texto para buscar: sin tildes, en minúsculas y con espacios en vez de signos (igual que
+   `a_busqueda` en generar_web.py). Se evita a propósito la expresión \p{L}\p{N}: es 4 veces
+   más lenta y esto se ejecuta sobre 40.000 repos. */
+const limpiar = (s) => {
+  s = String(s ?? "");
+  if (/[^\x00-\x7f]/.test(s)) {
+    // Sin tildes (NFD separa la letra de su marca) y sin signos que no sean ASCII:
+    // Latin-1 (¿ ¡ « » …), puntuación y símbolos generales, signos chinos/japoneses,
+    // formas de ancho completo y emoji (pares sustitutos).
+    s = s.normalize("NFD")
+      .replace(/[̀-゙゚ͯ]/g, "")
+      .replace(/[\u0080-¿ -⯿　-〿＀-／：-＠\ud800-\udfff]+/g, " ");
+  }
+  // Lo que no sea letra o número ASCII (los demás caracteres se conservan) pasa a espacio.
+  return s.toLowerCase().replace(/[^a-z0-9\u0080-￿]+/g, " ").trim();
+};
 
 const numero = (n) => Number(n || 0).toLocaleString("es-ES");
 
@@ -86,9 +107,6 @@ async function cargar() {
     $("#lista").innerHTML = `<li class="vacio">No se ha podido leer <code>datos.json</code> (${esc(err.message)}). Recarga la página; si sigue fallando, la actualización mensual puede estar en curso.</li>`;
     return;
   }
-  for (const r of estado.datos.repos) {
-    r._q = normalizar(r.n + " " + r.d);
-  }
   try { estado.favoritos = new Set(JSON.parse(leerLocal(CLAVE_FAVORITOS) || "[]")); } catch { /* vacío */ }
   pintarNumFavoritos();
   leerFiltros();
@@ -99,13 +117,153 @@ async function cargar() {
   const novedades = estado.datos.repos.filter((r) => r.nv).length;
   $("#num-novedades").textContent = novedades ? numero(novedades) : "";
   actualizar();
+  // El glosario y el índice en inglés se piden cuando el navegador está libre,
+  // para no retrasar la primera pantalla.
+  (window.requestIdleCallback || ((f) => setTimeout(f, 300)))(() => {
+    cargarGlosario();
+    cargarIndiceEn();
+    prepararEnSegundoPlano();
+  });
+}
+
+/* ---------- Búsqueda ampliada: español + equivalentes en inglés ---------- */
+
+/* Cada alternativa del glosario se guarda ya preparada: «patron» es lo que se busca
+   en el texto (con espacios para respetar el inicio de palabra) y «texto» lo que se
+   enseña al usuario. Si termina en «!», solo vale la palabra exacta. */
+function compilar(alternativa) {
+  const exacta = alternativa.endsWith("!");
+  const texto = limpiar(exacta ? alternativa.slice(0, -1) : alternativa);
+  return { patron: exacta ? ` ${texto} ` : ` ${texto}`, texto };
+}
+
+/* Texto de búsqueda de cada repo (`_n` nombre, `_q` nombre + descripción), con espacios a
+   los lados para poder buscar palabras enteras. Preparar los 40.000 cuesta algo más de medio
+   segundo (varios en un móvil lento), así que se hace en segundo plano y por trozos; si
+   alguien busca antes de que termine, se completa en ese momento. */
+let preparados = 0;
+function prepararTextos(hasta = Infinity) {
+  const repos = estado.datos.repos;
+  const fin = Math.min(repos.length, hasta);
+  for (; preparados < fin; preparados++) {
+    const r = repos[preparados];
+    r._i = preparados;
+    r._n = ` ${limpiar(r.n)} `;
+    r._q = ` ${limpiar(r.n + " " + r.d)} `;
+  }
+}
+
+function prepararEnSegundoPlano() {
+  if (preparados >= estado.datos.repos.length) return;
+  prepararTextos(preparados + 2000);
+  setTimeout(prepararEnSegundoPlano, 0);     // deja respirar al navegador entre trozos
+}
+
+async function pedirJson(url) {
+  const resp = await fetch(url);
+  if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+  return resp.json();
+}
+
+async function cargarGlosario() {
+  try {
+    const datos = await pedirJson("glosario.json");
+    glosario = new Map(Object.entries(datos).map(([k, v]) => [limpiar(k), v.map(compilar)]));
+  } catch { return; }              // sin glosario se busca como siempre
+  if (estado.texto.trim()) actualizar();
+}
+
+async function cargarIndiceEn() {
+  try {
+    const datos = await pedirJson("indice_en.json");
+    if (datos.length !== estado.datos.repos.length) return;   // no casa con datos.json: se ignora
+    indiceEn = datos.map((t) => ` ${t} `);
+  } catch { return; }
+  if (estado.texto.trim()) actualizar();
+}
+
+/* Forma escrita y formas en singular («facturas» → «factura», «ciudades» → «ciudad»). */
+function variantes(palabra) {
+  const v = [palabra];
+  if (palabra.length > 3 && palabra.endsWith("s")) v.push(palabra.slice(0, -1));
+  if (palabra.length > 4 && palabra.endsWith("es")) v.push(palabra.slice(0, -2));
+  return v;
+}
+
+/* Convierte lo escrito en «grupos». Cada grupo es una palabra (o frase del glosario,
+   como «hoja de cálculo») con sus alternativas: `es` son las formas en español (se
+   buscan como trozo de texto) y `en` los equivalentes del glosario. Un repo cumple la
+   búsqueda si cumple todos los grupos, y un grupo se cumple con cualquier alternativa. */
+function interpretar(texto, forzar = false) {
+  const tokens = limpiar(texto).split(" ").filter(Boolean);
+  const usarGlosario = glosario && (estado.ampliar || forzar);
+  const grupos = [];
+  let i = 0;
+  while (i < tokens.length) {
+    let encontrado = null;
+    if (usarGlosario) {
+      // Primero las frases más largas: «hoja de cálculo» antes que «hoja».
+      for (let largo = Math.min(4, tokens.length - i); largo >= 1 && !encontrado; largo--) {
+        const frase = tokens.slice(i, i + largo);
+        for (const v of variantes(frase[frase.length - 1])) {
+          const equivalentes = glosario.get([...frase.slice(0, -1), v].join(" "));
+          if (equivalentes) { encontrado = { largo, frase, equivalentes }; break; }
+        }
+      }
+    }
+    if (encontrado) {
+      grupos.push({ es: variantes(encontrado.frase.join(" ")), en: encontrado.equivalentes });
+      i += encontrado.largo;
+    } else {
+      grupos.push({ es: variantes(tokens[i]), en: [] });
+      i += 1;
+    }
+  }
+  return grupos;
+}
+
+function coincide(r, grupos) {
+  if (!grupos.length) return true;
+  // _h = texto en español + texto en inglés unidos (se crea la primera vez que hace
+  // falta): así cada alternativa se busca una sola vez por repo.
+  const h = indiceEn && estado.ampliar ? (r._h ??= r._q + indiceEn[r._i]) : r._q;
+  return grupos.every((g) =>
+    g.es.some((a) => h.includes(a)) || g.en.some((a) => h.includes(a.patron)));
+}
+
+/* Más puntos cuanto más «a la vista» está lo buscado: nombre 4, descripción 3 (lo
+   escrito) o 2 (equivalente en inglés), y solo en el texto original o los topics 1. */
+function puntuar(r) {
+  const ei = indiceEn && estado.ampliar ? indiceEn[r._i] : "";
+  let total = 0;
+  for (const g of estado.grupos) {
+    total += g.es.some((a) => r._n.includes(a)) || g.en.some((a) => r._n.includes(a.patron)) ? 4
+      : g.es.some((a) => r._q.includes(a)) ? 3
+      : g.en.some((a) => r._q.includes(a.patron)) ? 2
+      : ei ? 1 : 0;
+  }
+  return total;
+}
+
+/* Línea bajo el buscador que cuenta qué se ha ampliado, y deja volver a «solo español». */
+function pintarAmplia() {
+  const el = $("#amplia");
+  const reales = estado.ampliar ? estado.grupos : interpretar(estado.texto, true);
+  const terminos = [...new Set(reales.flatMap((g) => g.en.map((a) => a.texto)))];
+  if (!estado.texto.trim() || !glosario || !terminos.length) { el.hidden = true; return; }
+  const lista = terminos.slice(0, 8).join(", ") + (terminos.length > 8 ? "…" : "");
+  el.innerHTML = estado.ampliar
+    ? `Buscando también en inglés: <strong>${esc(lista)}</strong>${indiceEn ? "" : " (cargando textos en inglés…)"}
+       <button type="button" class="enlace" data-amplia="no">Solo español</button>`
+    : `Búsqueda solo en español. <button type="button" class="enlace" data-amplia="si">Ampliar a inglés</button>`;
+  el.hidden = false;
 }
 
 /* ---------- Filtrado y orden ---------- */
 
 function filtrar() {
-  const { filtros, estrellas, actividad, licencia, pestana } = estado;
-  const palabras = normalizar(estado.texto).split(/\s+/).filter(Boolean);
+  const { filtros, estrellas, actividad, licencia, pestana, grupos } = estado;
+  if (grupos.length) prepararTextos();       // si se busca, hacen falta todos los textos ya
   return estado.datos.repos.filter((r) => {
     if (pestana === "novedades" && !r.nv) return false;
     if (pestana === "skills" && !r.t.includes("skill")) return false;
@@ -118,15 +276,17 @@ function filtrar() {
     if (estrellas && r.s < estrellas) return false;
     if (actividad && dias(r.p) > actividad) return false;
     if (licencia && r.lt !== licencia) return false;
-    return palabras.every((p) => r._q.includes(p));
+    return coincide(r, grupos);
   });
 }
 
 function ordenar(lista) {
   const orden = estado.pestana === "skills" ? estado.ordenSkills : estado.orden;
   const porEstrellas = (a, b) => b.s - a.s;
+  if (orden === "relevancia") lista.forEach((r) => { r._rel = puntuar(r); });
   const criterios = {
     estrellas: porEstrellas,
+    relevancia: (a, b) => b._rel - a._rel || porEstrellas(a, b),
     subida: (a, b) => (b.sb || 0) - (a.sb || 0) || porEstrellas(a, b),
     semaforo: (a, b) => RANGO_SEMAFORO[b.sm] - RANGO_SEMAFORO[a.sm] || porEstrellas(a, b),
     actividad: (a, b) => (b.p || "").localeCompare(a.p || ""),
@@ -139,10 +299,12 @@ function ordenar(lista) {
 function actualizar() {
   if (!estado.datos) return;
   if (estado.pestana === "ideas") { guardarFiltros(); return; }
+  estado.grupos = interpretar(estado.texto);
   estado.resultado = ordenar(filtrar());
   guardarFiltros();
   estado.mostrados = 0;
   $("#lista").innerHTML = "";
+  pintarAmplia();
   pintarAviso();
   pintarResumen();
   if (!estado.resultado.length) {
@@ -223,6 +385,7 @@ function textoFiltros() {
   if (estado.orden !== "estrellas") p.set("o", estado.orden);
   if (estado.ordenSkills !== "estrellas") p.set("os", estado.ordenSkills);
   if (estado.soloFavoritos) p.set("fav", "1");
+  if (!estado.ampliar) p.set("ses", "1");       // «solo español»
   return p.toString();
 }
 
@@ -252,6 +415,7 @@ function leerFiltros() {
   estado.orden = opcion("#orden", p.get("o") || "estrellas", "estrellas");
   estado.ordenSkills = p.get("os") === "subida" ? "subida" : "estrellas";
   estado.soloFavoritos = p.get("fav") === "1";
+  estado.ampliar = p.get("ses") !== "1";
   ponerPestana(["novedades", "skills", "ideas"].includes(p.get("v")) ? p.get("v") : "catalogo");
 
   $("#buscar").value = estado.texto;
@@ -283,6 +447,7 @@ function ponerPestana(nombre) {
   document.querySelector(".marco").classList.toggle("sin-filtros", ideas);
   if (ideas) {
     $("#aviso-vista").hidden = true;
+    $("#amplia").hidden = true;
     abrirFiltros(false);
     cargarIdeas();
   }
@@ -455,6 +620,13 @@ $("#lista").addEventListener("click", async (ev) => {
 new IntersectionObserver((entradas) => {
   if (entradas[0].isIntersecting && estado.mostrados < estado.resultado.length) rellenar();
 }, { rootMargin: "800px" }).observe($("#centinela"));
+
+$("#amplia").addEventListener("click", (ev) => {
+  const boton = ev.target.closest("[data-amplia]");
+  if (!boton) return;
+  estado.ampliar = boton.dataset.amplia === "si";
+  actualizar();
+});
 
 let espera;
 $("#buscar").addEventListener("input", (ev) => {
