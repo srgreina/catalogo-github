@@ -95,6 +95,21 @@ jobs:
         continue-on-error: true
         run: python scripts/resumir.py --max-minutos 90
 
+      # Los resúmenes se guardan nada más generarse: son más de una hora de trabajo y no
+      # deben perderse si falla algo después. «-X theirs» hace que, si «main» cambió mientras
+      # tanto, gane la versión de esta ejecución (es la más reciente) y se conserve el resto.
+      - name: Guardar los resúmenes ya generados
+        continue-on-error: true
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add data/cache_resumenes.json
+          if ! git diff --cached --quiet; then
+            git commit -m "Resúmenes de los README ($(date -u +%Y-%m-%d))"
+            git pull --rebase -X theirs origin main
+            git push
+          fi
+
       # Si el catálogo baja más de un 15 % respecto al mes anterior, este paso falla
       # y no se guarda ni se publica nada (la web anterior se queda).
       - name: Generar datos de la web
@@ -120,7 +135,10 @@ jobs:
             echo "Sin cambios que guardar"
           else
             git commit -m "Actualización mensual del catálogo ($(date -u +%Y-%m-%d))"
-            git pull --rebase origin main   # por si main cambió durante la ejecución
+            # Por si «main» cambió durante la ejecución (que dura ~2 h): «-X theirs» deja ganar
+            # a los datos de esta ejecución, que son los más nuevos. Sin esto, dos ficheros
+            # generados modificados por dos commits distintos daban un conflicto y fallaba.
+            git pull --rebase -X theirs origin main
             git push
           fi
 

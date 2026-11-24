@@ -148,6 +148,13 @@ novedades.
   de `SKILL.md` se probó y se borró (recuperable del historial de git, commit `d87175a`):
   ~7,7 M de ficheros y el token automático de Actions apenas tiene cupo para ella.
 - **Ejecución programada**: no usar el minuto 0 en el cron (GitHub retrasa o descarta).
+- **Guardado de datos desde Actions (fallo del 2026-11-24)**: una ejecución larga (~2 h) guardaba sus
+  datos con `git pull --rebase` y, como `main` había cambiado mientras tanto (otra ejecución y
+  commits manuales tocaban los mismos ficheros generados), dio un CONFLICTO, falló y se perdieron
+  72 min de resúmenes y la publicación. Ahora se usa `git pull --rebase -X theirs` (en un rebase
+  «theirs» es el commit de la ejecución: gana lo generado y se conserva el código nuevo de `main`),
+  y los resúmenes se guardan en un paso propio justo después de generarlos. Además: no subir cambios
+  a ficheros `data/` a mano mientras corre una ejecución.
 - **Web**: los filtros viajan en la dirección (`#tipo=mcp&o=semaforo…`, ver
   `textoFiltros`/`leerFiltros` en `app.js`) y se recuerdan en `localStorage`; favoritos
   también en `localStorage`. Todo acceso a `localStorage` va con try/catch (`leerLocal`).
