@@ -7,6 +7,7 @@
 <meta name="description" content="Catálogo mensual de servidores MCP, skills de Claude y programas públicos de GitHub, con filtros y semáforo orientativo.">
 <meta name="theme-color" content="#1D2A33">
 <link rel="icon" href="icono.svg" type="image/svg+xml">
+<link rel="manifest" href="manifest.webmanifest">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@500;600;700&family=Barlow:wght@400;500;600&display=swap" rel="stylesheet">
@@ -17,6 +18,7 @@
   <div class="cabecera-fila">
     <h1>Catálogo GitHub <span>de MCP, skills y programas</span></h1>
     <p class="actualizado" id="actualizado">Cargando datos…</p>
+    <button class="instalar" id="instalar" type="button" hidden title="Abre el catálogo en su propia ventana, con su icono">Instalar como aplicación</button>
   </div>
   <nav class="pestanas" role="tablist" aria-label="Secciones">
     <button role="tab" aria-selected="true" data-pestana="catalogo" id="tab-catalogo">Catálogo</button>
@@ -150,6 +152,7 @@
 </div>
 
 <footer class="pie">
+  <p class="atajos"><strong>Atajos:</strong> <kbd>/</kbd> buscar · <kbd>↓</kbd> en el buscador abre el primer resultado · <kbd>↑</kbd> <kbd>↓</kbd> (o <kbd>K</kbd> <kbd>J</kbd>) pasan al repo anterior o siguiente con el panel abierto · <kbd>Esc</kbd> lo cierra</p>
   <p>El semáforo es <strong>orientativo</strong>: valora antigüedad, estrellas, forks, actividad, propietario, licencia e incidencias. No es un análisis de seguridad del código; revisa cada repo antes de usarlo.</p>
   <p>Fuentes: búsqueda de GitHub, <a href="https://registry.modelcontextprotocol.io">registro oficial de MCP</a>, listas awesome y el <a href="https://skills.sh">directorio skills.sh</a> (solo nombres de repos). Descripciones traducidas automáticamente con Argos Translate. Código en <a href="https://github.com/srgreina/catalogo-github">GitHub</a>.</p>
 </footer>

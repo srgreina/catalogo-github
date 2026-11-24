@@ -104,6 +104,13 @@ actividad, estrellas del mes, nombre; **descarga de los resultados en CSV**
 y, en los servidores del registro oficial MCP, el bloque «Cómo usarlo» con su
 paquete (npm, pypi…) y su servidor remoto.
 
+**Pensada para el PC**: atajos de teclado (`/` para buscar, `↓` en el buscador abre el primer
+resultado, `↑`/`↓` o `K`/`J` pasan al repo anterior o siguiente con el panel abierto, `Esc` lo cierra);
+en pantallas anchas (≥ 1300 px) el panel se coloca junto a la lista en vez de taparla; botones para
+**copiar** los comandos de instalación, el nombre del repo y su `git clone`; y se puede **instalar
+como aplicación** (Chrome, Brave o Edge: botón «Instalar como aplicación» o el icono de la barra de
+direcciones), con su ventana, su icono y funcionamiento sin conexión con los últimos datos.
+
 **Panel lateral con el resumen de cada repo**: al pulsar un repo se abre un panel a la derecha
 (hoja a pantalla completa en el móvil) con **para qué sirve**, **características**, **cómo usarlo**
 (comandos de instalación), **rendimiento** (solo las cifras que afirma el propio README, marcadas

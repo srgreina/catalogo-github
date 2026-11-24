@@ -199,6 +199,15 @@ novedades.
   `promptDominio`) solo copia un texto al portapapeles, no llama a ninguna API. La pestaña
   Ideas oculta filtros y lista; `actualizar()` sale pronto en ella (si no, el centinela
   oculto pintaría los 43.000 repos).
+- **Aplicación instalable (PWA)**: `docs/manifest.webmanifest` + `docs/sw.js` + `icono-192.png` /
+  `icono-512.png` (generados desde `icono.svg` sobre fondo amarillo con Playwright). El service worker
+  es «red primero»: siempre baja lo nuevo y solo usa la copia guardada si no hay red (la web cambia una
+  vez al mes y no puede quedarse con una versión vieja); no reescribe en la caché lo que no ha cambiado
+  (compara el ETag). Si se añade un fichero estático imprescindible, ponerlo en `BASICOS` de `sw.js`.
+  El botón «Instalar como aplicación» sale con `beforeinstallprompt` (no existe en todos los navegadores).
+  Atajos y botones de copiar están en `app.js` (`moverPanel`, `abrirPorIndice`, `data-copiar`); los
+  atajos no actúan mientras se escribe en un campo. En ≥1300 px el panel empuja la página
+  (`body.panel-abierto { padding-right }`); por debajo, la tapa.
 - **Pruebas de la web en local**: no ejecutar `generar_web.py` tal cual (reescribe
   `data/historico.json`, que está versionado); usar un script que cambie `HISTORICO`,
   `NOVEDADES`, `WEB` y `DETALLES` a una carpeta temporal.

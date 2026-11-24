@@ -564,9 +564,10 @@ function fichaPanel(base, extra) {
 
   // Cómo usarlo: comandos del README y datos del registro oficial MCP. Las direcciones se
   // muestran como texto, sin enlace: son puntos de conexión para el cliente MCP, no páginas.
-  const uso = (rs.u || []).map((c) => `<li><code>${esc(c)}</code></li>`);
+  const botonCopiar = (texto) => `<button type="button" class="copiar" data-copiar="${esc(texto)}" title="Copiar al portapapeles">Copiar</button>`;
+  const uso = (rs.u || []).map((c) => `<li><code>${esc(c)}</code>${botonCopiar(c)}</li>`);
   if (r.pq) uso.push(`<li>Paquete (registro oficial MCP): ${r.pq.map(esc).join(", ")}</li>`);
-  (r.rt || []).forEach((u) => uso.push(`<li>Servidor remoto: <code>${esc(u)}</code></li>`));
+  (r.rt || []).forEach((u) => uso.push(`<li><span>Servidor remoto:</span> <code>${esc(u)}</code>${botonCopiar(u)}</li>`));
 
   const skills = r.ss ? seccion("Skills incluidas (skills.sh)", `<ul class="chips">${
     r.ss.map((n) => `<li><a href="https://skills.sh/${encodeURIComponent(propietario)}/${encodeURIComponent(nombre)}/${encodeURIComponent(n)}" target="_blank" rel="noopener">${esc(n)}</a></li>`).join("")
@@ -614,6 +615,8 @@ function fichaPanel(base, extra) {
       ${r.tp ? `<dt>Topics</dt><dd>${r.tp.map(esc).join(", ")}</dd>` : ""}
     </dl>
     <div class="enlaces"><a href="${url}" target="_blank" rel="noopener">Abrir en GitHub</a>${web}
+      <button type="button" class="copiar" data-copiar="${esc(r.n)}" title="Copiar owner/repo">Copiar nombre</button>
+      <button type="button" class="copiar" data-copiar="git clone ${esc(url)}.git" title="Copiar el comando para clonarlo">Copiar git clone</button>
       <button type="button" class="boton-fav" data-fav="${esc(r.n)}" aria-pressed="${favorito}">${favorito ? "♥ En favoritos" : "♡ Guardar en favoritos"}</button></div>
   </div>`;
 }
@@ -622,7 +625,7 @@ let panelRepo = null;     // repo que se está viendo
 let panelFila = null;     // su fila en la lista (si sigue en pantalla)
 let panelPeticion = 0;    // para ignorar respuestas de un repo que ya se cerró o cambió
 
-async function abrirPanel(r, fila) {
+async function abrirPanel(r, fila, enfocar = true) {
   panelFila?.classList.remove("activa");
   panelFila = fila || null;
   panelFila?.classList.add("activa");
@@ -633,7 +636,7 @@ async function abrirPanel(r, fila) {
   $("#panel-cuerpo").innerHTML = '<p class="vacio-corto">Cargando…</p>';
   $("#panel").hidden = false;
   document.body.classList.add("panel-abierto");
-  if (cerrado) $("#cerrar-panel").focus();
+  if (cerrado && enfocar) $("#cerrar-panel").focus();
   let extra = {};
   try {
     extra = await detalle(r);
@@ -654,6 +657,22 @@ function cerrarPanel() {
   panelFila = panelRepo = null;
 }
 
+/* Abre el repo número `i` de los resultados (pintando más filas si aún no están en pantalla). */
+function abrirPorIndice(i, enfocar = true) {
+  if (i < 0 || i >= estado.resultado.length) return;
+  while (estado.mostrados <= i) pintarTanda();
+  const fila = $("#lista").children[i];
+  abrirPanel(estado.resultado[i], fila, enfocar);
+  fila?.scrollIntoView({ block: "nearest" });
+}
+
+/* Con el panel abierto: pasa al repo anterior (-1) o siguiente (+1). */
+function moverPanel(delta) {
+  const actual = panelRepo ? estado.resultado.indexOf(panelRepo) : -1;
+  const siguiente = Math.min(Math.max(actual + delta, 0), estado.resultado.length - 1);
+  if (siguiente !== actual) abrirPorIndice(siguiente, false);
+}
+
 /* ---------- Eventos ---------- */
 
 $("#lista").addEventListener("click", (ev) => {
@@ -663,7 +682,14 @@ $("#lista").addEventListener("click", (ev) => {
   abrirPanel(estado.resultado[Number(li.dataset.i)], li);
 });
 
-$("#panel-cuerpo").addEventListener("click", (ev) => {
+$("#panel-cuerpo").addEventListener("click", async (ev) => {
+  const copiar = ev.target.closest("[data-copiar]");
+  if (copiar) {
+    const etiqueta = copiar.dataset.etiqueta ??= copiar.textContent;
+    copiar.textContent = (await copiarTexto(copiar.dataset.copiar)) ? "¡Copiado!" : "No se pudo copiar";
+    setTimeout(() => { copiar.textContent = etiqueta; }, 1500);
+    return;
+  }
   const bfav = ev.target.closest(".boton-fav");
   if (!bfav) return;
   const activo = alternarFavorito(bfav.dataset.fav);
@@ -752,10 +778,31 @@ $("#abrir-filtros").addEventListener("click", () => abrirFiltros(true));
 $("#cerrar-filtros").addEventListener("click", () => abrirFiltros(false));
 $("#ver-resultados").addEventListener("click", () => abrirFiltros(false));
 $("#fondo-hoja").addEventListener("click", () => abrirFiltros(false));
+/* Atajos de teclado (pensados para el PC). No actúan mientras se escribe en un campo. */
 document.addEventListener("keydown", (ev) => {
-  if (ev.key !== "Escape") return;
-  if ($("#filtros").classList.contains("abierto")) abrirFiltros(false);
-  else if (!$("#panel").hidden) cerrarPanel();
+  if (ev.key === "Escape") {
+    if ($("#filtros").classList.contains("abierto")) abrirFiltros(false);
+    else if (!$("#panel").hidden) cerrarPanel();
+    return;
+  }
+  if (ev.ctrlKey || ev.metaKey || ev.altKey || ev.target.closest?.("input, textarea, select, [contenteditable]")) return;
+  if (ev.key === "/") {
+    ev.preventDefault();
+    if (estado.pestana === "ideas") { ponerPestana("catalogo"); actualizar(); }
+    $("#buscar").focus();
+    $("#buscar").select();
+  } else if (!$("#panel").hidden && ["ArrowDown", "j", "J", "ArrowUp", "k", "K"].includes(ev.key)) {
+    ev.preventDefault();
+    moverPanel(["ArrowDown", "j", "J"].includes(ev.key) ? 1 : -1);
+  }
+});
+
+/* ↓ en el buscador abre el primer resultado. */
+$("#buscar").addEventListener("keydown", (ev) => {
+  if (ev.key !== "ArrowDown" || !estado.resultado.length) return;
+  ev.preventDefault();
+  $("#buscar").blur();
+  abrirPorIndice(0);
 });
 
 /* ---------- Ideas ---------- */
@@ -958,5 +1005,27 @@ $("#ideas-claude").addEventListener("click", () => {
   }
   copiarParaClaude(promptBusqueda());
 });
+
+/* ---------- Instalar como aplicación (Chrome, Brave, Edge) ---------- */
+
+let ofertaInstalar = null;
+window.addEventListener("beforeinstallprompt", (ev) => {
+  ev.preventDefault();                        // se ofrece desde nuestro botón, no con el aviso del navegador
+  ofertaInstalar = ev;
+  $("#instalar").hidden = false;
+});
+$("#instalar").addEventListener("click", async () => {
+  if (!ofertaInstalar) return;
+  ofertaInstalar.prompt();
+  await ofertaInstalar.userChoice;
+  ofertaInstalar = null;
+  $("#instalar").hidden = true;
+});
+window.addEventListener("appinstalled", () => { $("#instalar").hidden = true; });
+
+/* El service worker permite instalarla y abrirla sin conexión con los últimos datos. */
+if ("serviceWorker" in navigator) {
+  window.addEventListener("load", () => { navigator.serviceWorker.register("sw.js").catch(() => {}); });
+}
 
 cargar();

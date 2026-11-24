@@ -1,0 +1,16 @@
+{
+  "name": "Catálogo GitHub de MCP, skills y programas",
+  "short_name": "Catálogo GitHub",
+  "description": "Catálogo mensual de servidores MCP, skills de Claude y programas públicos de GitHub.",
+  "lang": "es",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "background_color": "#F3F5F2",
+  "theme_color": "#1D2A33",
+  "icons": [
+    { "src": "icono-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any maskable" },
+    { "src": "icono-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any maskable" },
+    { "src": "icono.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any" }
+  ]
+}
