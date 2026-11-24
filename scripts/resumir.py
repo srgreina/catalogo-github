@@ -204,8 +204,10 @@ def es_prosa(p: str) -> bool:
     """¿Es un párrafo de texto de verdad (y no una lista de enlaces, un aviso, un título…)?"""
     if len(p) < 50 or RE_RUIDO_PARRAFO.match(p) or p[0] in "\"“”«‘'":     # sin citas decorativas
         return False
-    if p.count("·") >= 2 or p.count("|") >= 2 or p.count(" - ") >= 3:
+    if p.count("·") >= 2 or p.count("|") >= 2 or p.count(" - ") >= 3 or p.count("•") >= 3:
         return False
+    if p.startswith("<") or re.match(r"(?i)^(then|before|first|next|now|and|but|so)", p):
+        return False                         # HTML cortado o continuación de otra frase
     letras = sum(c.isalpha() for c in p)
     if letras < len(p) * 0.6:
         return False

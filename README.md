@@ -114,6 +114,16 @@ como no verificadas), **cuándo usar** una skill (campo `description` de su `SKI
 `data/cache_resumenes.json` y solo se vuelve a bajar el README de un repo cada 90 días si ha
 habido cambios.
 
+**Traducciones de calidad de los repos más populares**: Argos traduce mal a veces, así que los
+resúmenes de los 288 repos más populares se tradujeron en una sesión de Claude Code con la skill
+`baoyu-translate` (modo rápido, estilo técnico, glosario del proyecto) y se guardan en
+`data/traducciones_claude.json`. `generar_web.py` las prefiere a las de Argos mientras el README no
+cambie (misma huella `h`); el panel lo indica («traducido con IA (Claude)»). Esa misma pasada
+descartó los textos basura que la extracción había cogido (avisos, HTML cortado, listas de
+idiomas). Es manual: `python scripts/traduccion_manual.py preparar --top N --salida trabajo.json`
+saca los originales; se traducen y `... aplicar --originales trabajo.json --traducciones es.json`
+las valida y guarda.
+
 **Pestaña «Ideas»**: panorama para buscar ideas de programas. No usa IA, son solo
 cuentas que calcula `scripts/ideas.py` cada mes (`docs/ideas.json`): por dominio, cuántos
 repos hay de cada tipo, los más destacados, las novedades y los **huecos** (temas con

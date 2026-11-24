@@ -116,7 +116,8 @@ novedades.
 
 - En el repo: código, `docs/` (web), `data/historico.json`, `data/novedades.json`,
   `data/cache_traducciones.json`, `data/estado_github.json`, `data/descartes.json`,
-  `data/cache_resumenes.json` (los actualiza el workflow con un commit).
+  `data/cache_resumenes.json` (los actualiza el workflow con un commit) y
+  `data/traducciones_claude.json` (a mano, con `traduccion_manual.py`).
 - Fuera del repo (`.gitignore`): `data/raw/`, `data/catalogo.json`, `docs/datos.json`,
   `docs/detalles/`, `docs/ideas.json`, `docs/indice_en.json`, `.venv/`, `.argos/`. La web se publica con `upload-pages-artifact` +
   `deploy-pages` (Pages en modo «GitHub Actions»), no desde la rama.
@@ -178,6 +179,17 @@ novedades.
   Los textos van en los ficheros `detalles/` (`rs`) y la web los pinta en el panel lateral
   (`abrirPanel`/`fichaPanel` en `app.js`; Esc o ✕ lo cierra). Si algún día se quiere más calidad, la
   alternativa descartada era la API de Claude (clave `ANTHROPIC_API_KEY`, ~25-60 USD la carga inicial).
+- **Traducciones de calidad hechas por Claude Code** (`scripts/traduccion_manual.py`, manual, no corre
+  en el workflow): para los 288 repos más populares se sustituye la traducción de Argos por una
+  hecha en sesión con la skill `baoyu-translate` (instalada en `~/.agents/skills`; preferencias en
+  `~/.baoyu-skills/baoyu-translate/EXTEND.md`: es, modo quick, estilo técnico). Flujo: `preparar`
+  baja los README y deja los textos originales en un JSON de trabajo → se traducen → `aplicar` valida
+  (misma estructura: listas de igual longitud) y guarda en `data/traducciones_claude.json` con la
+  huella `h` del README. En el JSON de traducciones, `null` DESCARTA un campo (o una frase dentro de
+  una lista): se usa para la basura que extrajeron las reglas (avisos, `<img` cortado, listas de
+  idiomas, notas de versión). `generar_web.py` aplica la traducción si `h` coincide con la de
+  `cache_resumenes.json` (o no hay resumen) y marca `rs.tc = 1`; el panel dice entonces «traduce con
+  IA (Claude)». Para ampliar: `preparar --top 600` (salta los ya hechos), traducir y `aplicar`.
 - **Ideas** (`scripts/ideas.py`, sin IA): los «huecos» comparan la *proporción* de cada
   tipo (repos del tema / repos de ese tipo en todo el catálogo), no las cifras absolutas:
   hay el doble de MCP que de skills y con cifras todos saldrían en el mismo sentido. Los

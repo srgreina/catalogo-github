@@ -40,6 +40,7 @@ DETALLES = RAIZ / "docs" / "detalles"
 IDEAS = RAIZ / "docs" / "ideas.json"
 INDICE_EN = RAIZ / "docs" / "indice_en.json"
 RESUMENES = RAIZ / "data" / "cache_resumenes.json"
+TRADUCCIONES_CLAUDE = RAIZ / "data" / "traducciones_claude.json"
 MAX_SKILLS_SH = 12    # nombres de skills de skills.sh que se enseñan por repo
 MAX_ORIGINAL = 300    # caracteres de la descripción original que se indexan
 INSTANTANEAS_GUARDADAS = 8
@@ -101,6 +102,8 @@ def main() -> None:
     hist_repos: dict = historico["repos"]
     resumenes: dict = (json.loads(RESUMENES.read_text(encoding="utf-8"))["repos"]
                        if RESUMENES.exists() else {})
+    traducciones_claude: dict = (json.loads(TRADUCCIONES_CLAUDE.read_text(encoding="utf-8"))["repos"]
+                                 if TRADUCCIONES_CLAUDE.exists() else {})
 
     # Seguridad: si una búsqueda falló a medias, el catálogo saldría con huecos.
     # Se aborta antes de escribir nada (el workflow no publica ni guarda).
@@ -169,6 +172,19 @@ def main() -> None:
         # Resumen automático del README (ver resumir.py) y skills de skills.sh.
         rs = resumenes.get(clave) or {}
         resumen = {k: rs[k] for k in ("q", "qo", "c", "u", "r", "k") if rs.get(k)}
+        # Traducción de calidad hecha a mano (traduccion_manual.py): sustituye a la de Argos
+        # mientras el README siga siendo el mismo (misma huella «h»).
+        tc = traducciones_claude.get(clave)
+        if tc and (not rs or tc.get("h") == rs.get("h")):
+            for k in ("q", "qo", "c", "r", "k"):
+                if k in tc:
+                    if tc[k] is None:
+                        resumen.pop(k, None)          # descartado a mano (texto basura)
+                    elif tc[k]:
+                        resumen[k] = tc[k]
+            if tc.get("q") is None and "q" in tc:
+                resumen.pop("qo", None)
+            resumen["tc"] = 1
         if resumen:
             detalle["rs"] = resumen
         nombres_ss = repo.get("skills_sh") or []

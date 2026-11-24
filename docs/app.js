@@ -574,7 +574,9 @@ function fichaPanel(base, extra) {
 
   const hayResumen = rs.q || rs.c || rs.u || rs.r || rs.k;
   const aviso = hayResumen
-    ? `Resumen automático: se extrae del README con reglas (sin IA) y se traduce con traducción automática, así que puede tener errores.`
+    ? (rs.tc
+      ? `Resumen automático: se extrae del README con reglas y se traduce con IA (Claude), así que puede tener errores.`
+      : `Resumen automático: se extrae del README con reglas (sin IA) y se traduce con traducción automática, así que puede tener errores.`)
     : `Todavía no hay resumen automático de este repo (se hacen para los de 50 estrellas o más).`;
 
   return `<div class="ficha-panel">
