@@ -26,7 +26,8 @@ a mano con la casilla «completa») ejecuta en orden:
 | `unir.py` | los cuatro anteriores + GraphQL para repos nuevos + `data/descartes.json` | `data/raw/unido.json`, descartes |
 | `clasificar.py` | `unido.json` | `data/catalogo.json` (tipo, dominio, licencia, semáforo) |
 | `traducir.py` | `catalogo.json` + `data/cache_traducciones.json` | los mismos |
-| `generar_web.py` | `catalogo.json` + `data/historico.json` | `docs/datos.json`, `docs/detalles/*.json`, `docs/ideas.json` (vía `ideas.py`), `docs/indice_en.json`, `data/novedades.json`, histórico |
+| `resumir.py` | `catalogo.json` + README/SKILL.md por GraphQL (≥50★; `continue-on-error`) | `data/cache_resumenes.json` |
+| `generar_web.py` | `catalogo.json` + `data/historico.json` + `cache_resumenes.json` | `docs/datos.json`, `docs/detalles/*.json`, `docs/ideas.json` (vía `ideas.py`), `docs/indice_en.json`, `data/novedades.json`, histórico |
 
 `comun.py` reúne peticiones con reintentos, GraphQL por lotes, filtros de descarte y utilidades.
 
@@ -69,6 +70,7 @@ un nombre exige cambiarlo en los dos):
 | `m` dominios (sin «otros») | `p` último push | `mo` motivos | `w` web |
 | `s` estrellas | `sm` semáforo v/a/r | | |
 | `fu` fuentes | `org`, `nv`, `sb` opcionales | `pq` paquetes MCP | `rt` remotos MCP |
+| | | `rs` resumen `{q,qo,c,u,r,k}` | `ss`/`sn` skills de skills.sh |
 
 **Novedades y subidas** (`generar_web.py` + `app.js`): `historico.json` guarda `base` (fecha
 de la primera ejecución) y, por repo, `primera` aparición y las últimas 8 instantáneas de
@@ -113,8 +115,8 @@ novedades.
 ## Qué se guarda en git y qué no
 
 - En el repo: código, `docs/` (web), `data/historico.json`, `data/novedades.json`,
-  `data/cache_traducciones.json`, `data/estado_github.json`, `data/descartes.json`
-  (los actualiza el workflow con un commit).
+  `data/cache_traducciones.json`, `data/estado_github.json`, `data/descartes.json`,
+  `data/cache_resumenes.json` (los actualiza el workflow con un commit).
 - Fuera del repo (`.gitignore`): `data/raw/`, `data/catalogo.json`, `docs/datos.json`,
   `docs/detalles/`, `docs/ideas.json`, `docs/indice_en.json`, `.venv/`, `.argos/`. La web se publica con `upload-pages-artifact` +
   `deploy-pages` (Pages en modo «GitHub Actions»), no desde la rama.
@@ -163,6 +165,19 @@ novedades.
   para no retrasar la carga. Medido con datos reales: «finanzas» 69 → 562 repos, «deporte»
   7 → 104. Otros idiomas se descartaron: el 88 % de las descripciones ya es inglés y el chino,
   ruso y japonés ya se traducen al español.
+- **Resúmenes** (`scripts/resumir.py`, sin IA ni claves): se eligió la opción gratuita (extracción por
+  reglas) en vez de la API de Claude. Campos: `q` para qué sirve (primer párrafo de texto del README,
+  se omite si repite la descripción de GitHub; `qo` guarda el original), `c` viñetas de la sección
+  Features/Highlights/Tools, `u` comandos de Install/Usage, `r` frases con cifras («2x faster»,
+  «-40 % tokens»: solo lo que AFIRMA el README, nunca se inventa), `k` `description` del SKILL.md en
+  la raíz. Se traduce con los mismos modelos de Argos (que a veces escriben `&amp;`: se corrige con
+  `html.unescape` aquí, en `traducir.py` y en `generar_web.py`). Con 400 README reales: 0 errores,
+  ~360 B por resumen; cobertura q 90 %, c 39 %, u 51 %, r 8 %, k 4 %. Se descarga por GraphQL, 20
+  repos por consulta (~0,2 s/repo); `--max-minutos 90` reparte la primera pasada (~11.700 repos) en
+  varias ejecuciones. Solo se vuelve a bajar un README si han pasado 90 días y hay push posterior.
+  Los textos van en los ficheros `detalles/` (`rs`) y la web los pinta en el panel lateral
+  (`abrirPanel`/`fichaPanel` en `app.js`; Esc o ✕ lo cierra). Si algún día se quiere más calidad, la
+  alternativa descartada era la API de Claude (clave `ANTHROPIC_API_KEY`, ~25-60 USD la carga inicial).
 - **Ideas** (`scripts/ideas.py`, sin IA): los «huecos» comparan la *proporción* de cada
   tipo (repos del tema / repos de ese tipo en todo el catálogo), no las cifras absolutas:
   hay el doble de MCP que de skills y con cifras todos saldrían en el mismo sentido. Los

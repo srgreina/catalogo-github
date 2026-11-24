@@ -25,6 +25,7 @@ from __future__ import annotations
 
 import argparse
 import hashlib
+import html
 import io
 import json
 import os
@@ -115,7 +116,8 @@ class Modelo:
         tokens = self.sp.encode(textos, out_type=str)
         resultados = self.traductor.translate_batch(
             tokens, beam_size=2, max_batch_size=LOTE, max_decoding_length=256)
-        return [self.sp.decode(r.hypotheses[0]) for r in resultados]
+        # El modelo a veces escribe «&amp;» o «&quot;» en vez del carácter: se convierte.
+        return [html.unescape(self.sp.decode(r.hypotheses[0])) for r in resultados]
 
 
 class Traductor:

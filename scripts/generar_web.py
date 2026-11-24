@@ -21,6 +21,7 @@ from __future__ import annotations
 
 import argparse
 import hashlib
+import html
 import json
 import re
 import shutil
@@ -38,6 +39,8 @@ WEB = RAIZ / "docs" / "datos.json"
 DETALLES = RAIZ / "docs" / "detalles"
 IDEAS = RAIZ / "docs" / "ideas.json"
 INDICE_EN = RAIZ / "docs" / "indice_en.json"
+RESUMENES = RAIZ / "data" / "cache_resumenes.json"
+MAX_SKILLS_SH = 12    # nombres de skills de skills.sh que se enseñan por repo
 MAX_ORIGINAL = 300    # caracteres de la descripción original que se indexan
 INSTANTANEAS_GUARDADAS = 8
 # La ejecución es mensual (el mes más corto: 28 días). Con 25 días, lo visto en la
@@ -96,6 +99,8 @@ def main() -> None:
                  else {"base": hoy_txt, "repos": {}})
     base = historico["base"]
     hist_repos: dict = historico["repos"]
+    resumenes: dict = (json.loads(RESUMENES.read_text(encoding="utf-8"))["repos"]
+                       if RESUMENES.exists() else {})
 
     # Seguridad: si una búsqueda falló a medias, el catálogo saldría con huecos.
     # Se aborta antes de escribir nada (el workflow no publica ni guarda).
@@ -123,7 +128,8 @@ def main() -> None:
         subida = repo["estrellas"] - previas if previas is not None else None
 
         original = repo.get("descripcion") or ""
-        traducida = repo.get("descripcion_es") or original
+        # La caché de traducciones tiene ~1.800 textos con «&amp;»/«&quot;» que escribió el modelo.
+        traducida = html.unescape(repo.get("descripcion_es") or original)
         sem = repo["semaforo"]
         # Lista: lo necesario para mostrar, buscar y filtrar (campos cortos).
         entrada = {
@@ -160,6 +166,15 @@ def main() -> None:
             detalle["lg"] = repo["lenguaje"]
         if repo.get("web"):
             detalle["w"] = repo["web"]
+        # Resumen automático del README (ver resumir.py) y skills de skills.sh.
+        rs = resumenes.get(clave) or {}
+        resumen = {k: rs[k] for k in ("q", "qo", "c", "u", "r", "k") if rs.get(k)}
+        if resumen:
+            detalle["rs"] = resumen
+        nombres_ss = repo.get("skills_sh") or []
+        if nombres_ss:
+            detalle["ss"] = nombres_ss[:MAX_SKILLS_SH]
+            detalle["sn"] = len(nombres_ss)
         # Cómo usarlo, si está en el registro oficial MCP.
         registro = repo.get("registro_mcp") or []
         paquetes = sorted({p for r in registro for p in r.get("paquetes", [])})

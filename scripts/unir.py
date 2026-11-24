@@ -91,8 +91,11 @@ def main() -> None:
     print(f"Listas awesome: {len(awesome)} repos")
 
     skills_sh = leer("skills_sh.json").get("repos", {})
-    for clave in skills_sh:
-        anadir_fuente(extra(clave), "skills-sh")
+    for clave, nombres in skills_sh.items():
+        destino = extra(clave)
+        anadir_fuente(destino, "skills-sh")
+        if isinstance(nombres, list):          # nombres de sus skills en skills.sh
+            destino["skills_sh"] = nombres
     print(f"skills.sh: {len(skills_sh)} repos")
 
     ahora = datetime.now(timezone.utc)

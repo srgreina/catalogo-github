@@ -104,6 +104,16 @@ actividad, estrellas del mes, nombre; **descarga de los resultados en CSV**
 y, en los servidores del registro oficial MCP, el bloque «Cómo usarlo» con su
 paquete (npm, pypi…) y su servidor remoto.
 
+**Panel lateral con el resumen de cada repo**: al pulsar un repo se abre un panel a la derecha
+(hoja a pantalla completa en el móvil) con **para qué sirve**, **características**, **cómo usarlo**
+(comandos de instalación), **rendimiento** (solo las cifras que afirma el propio README, marcadas
+como no verificadas), **cuándo usar** una skill (campo `description` de su `SKILL.md`), las
+**skills que tiene en skills.sh** (con enlace a cada una), el semáforo y los datos. Lo genera
+`scripts/resumir.py` **sin IA**, con reglas sobre el README, para los repos con ≥ 50 estrellas
+(~11.700), y lo traduce con Argos; por eso puede tener errores y el panel lo avisa. Se guarda en
+`data/cache_resumenes.json` y solo se vuelve a bajar el README de un repo cada 90 días si ha
+habido cambios.
+
 **Pestaña «Ideas»**: panorama para buscar ideas de programas. No usa IA, son solo
 cuentas que calcula `scripts/ideas.py` cada mes (`docs/ideas.json`): por dominio, cuántos
 repos hay de cada tipo, los más destacados, las novedades y los **huecos** (temas con

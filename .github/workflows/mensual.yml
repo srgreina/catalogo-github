@@ -88,6 +88,13 @@ jobs:
       - name: Traducir descripciones
         run: python scripts/traducir.py --max-minutos 150
 
+      # Resúmenes del README de los repos con ≥50 estrellas (sin IA). La primera vez son
+      # ~11.700 repos: se reparten en 2-3 ejecuciones con el tope de tiempo. Si falla, la
+      # web sale igual, sin los resúmenes nuevos (continue-on-error).
+      - name: Resúmenes de los README
+        continue-on-error: true
+        run: python scripts/resumir.py --max-minutos 90
+
       # Si el catálogo baja más de un 15 % respecto al mes anterior, este paso falla
       # y no se guarda ni se publica nada (la web anterior se queda).
       - name: Generar datos de la web
@@ -103,12 +110,12 @@ jobs:
           print(f"novedades={sum(1 for r in d['repos'] if r.get('nv'))}")
           EOF
 
-      - name: Guardar histórico, novedades, traducciones, estado y descartes
+      - name: Guardar histórico, novedades, traducciones, estado, descartes y resúmenes
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add data/historico.json data/novedades.json data/cache_traducciones.json \
-                  data/estado_github.json data/descartes.json
+                  data/estado_github.json data/descartes.json data/cache_resumenes.json
           if git diff --cached --quiet; then
             echo "Sin cambios que guardar"
           else

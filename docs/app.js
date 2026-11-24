@@ -446,6 +446,7 @@ function ponerPestana(nombre) {
   $("#vista-ideas").hidden = !ideas;
   document.querySelector(".marco").classList.toggle("sin-filtros", ideas);
   if (ideas) {
+    if (!$("#panel").hidden) cerrarPanel();
     $("#aviso-vista").hidden = true;
     $("#amplia").hidden = true;
     abrirFiltros(false);
@@ -510,7 +511,7 @@ function fila(r, i) {
   const tipos = r.t.map((t) => `<span class="etiqueta">${TIPOS[t] || t}</span>`).join("");
   const sube = r.sb > 0 ? `<span class="sube">+${numero(r.sb)} este mes</span>` : "";
   return `<li class="ref" data-sm="${r.sm}" data-i="${i}">
-    <button class="ref-resumen" type="button" aria-expanded="false">
+    <button class="ref-resumen" type="button" aria-haspopup="dialog" aria-controls="panel">
       <span class="ref-nombre"><span><span class="propietario">${esc(propietario)}/</span>${esc(nombre)}</span>${r.nv ? '<span class="nuevo">Nuevo</span>' : ""}<span class="fav-marca" title="Favorito" ${estado.favoritos.has(r.n) ? "" : "hidden"}>♥</span></span>
       <span class="ref-desc">${esc(r.d) || "<em>Sin descripción</em>"}</span>
       <span class="ref-specs">
@@ -539,83 +540,138 @@ async function detalle(r) {
   return (await trozos.get(trozo))[clave] || {};
 }
 
-function ficha(base, extra) {
+/* ---------- Panel lateral con el resumen de cada repo ---------- */
+
+const seccion = (titulo, contenido) => `<section class="bloque"><h3>${titulo}</h3>${contenido}</section>`;
+const vinetas = (items) => `<ul class="vinetas">${items.map((x) => `<li>${esc(x)}</li>`).join("")}</ul>`;
+
+function fichaPanel(base, extra) {
   const r = { ...base, ...extra };
+  const rs = r.rs || {};                       // resumen automático (ver resumir.py)
+  const [propietario, nombre] = r.n.toLowerCase().split("/");
   const url = `https://github.com/${r.n}`;
   const dominios = r.m.length ? r.m.map((d) => DOMINIOS[d]).join(", ") : "Otros";
-  const original = r.o
-    ? `<details class="original"><summary>Ver descripción original</summary><p>${esc(r.o)}</p></details>`
-    : "";
   // La web del proyecto la escribe cualquiera: solo se enlaza si es http(s).
   const web = r.w && /^https?:\/\//i.test(r.w)
     ? `<a href="${esc(r.w)}" target="_blank" rel="noopener noreferrer">Web del proyecto</a>` : "";
-  // Cómo usarlo (datos del registro oficial MCP). Las direcciones se muestran como
-  // texto, sin enlace: son puntos de conexión para el cliente MCP, no páginas.
-  const uso = (r.pq || r.rt) ? `<div class="uso">
-        <h4>Cómo usarlo (registro oficial MCP)</h4>
-        <ul>
-          ${r.pq ? `<li>Se instala como paquete: ${r.pq.map(esc).join(", ")}</li>` : ""}
-          ${(r.rt || []).map((u) => `<li>Servidor remoto: <code>${esc(u)}</code></li>`).join("")}
-        </ul>
-      </div>` : "";
   const favorito = estado.favoritos.has(r.n);
-  return `<div class="ficha">
-    <div class="senal" data-sm="${r.sm}" role="img" aria-label="Semáforo ${SEMAFORO[r.sm]}"><i class="r"></i><i class="a"></i><i class="v"></i></div>
-    <div class="ficha-cuerpo">
-      <h3>Semáforo ${SEMAFORO[r.sm]}${r.sp != null ? ` (${r.sp} puntos)` : ""}</h3>
-      <ul class="motivos">${(r.mo || []).map((m) => `<li>${esc(m)}</li>`).join("") || "<li>Sin puntos a favor</li>"}</ul>
-      <p class="orientativo">Valoración orientativa a partir de datos públicos. No es un análisis de seguridad del código.</p>
-      ${original}
-      ${uso}
-      <dl class="datos">
-        <dt>Tipo</dt><dd>${r.t.map((t) => TIPOS[t] || t).join(", ")}</dd>
-        <dt>Dominio</dt><dd>${dominios}</dd>
-        <dt>Licencia</dt><dd>${esc(r.l || "Ninguna")} (${LICENCIAS[r.lt]})</dd>
-        <dt>Estrellas</dt><dd>${numero(r.s)}${r.sb ? ` (+${numero(r.sb)} este mes)` : ""}</dd>
-        <dt>Forks</dt><dd>${numero(r.f)}</dd>
-        <dt>Incidencias</dt><dd>${numero(r.i)} abiertas</dd>
-        <dt>Propietario</dt><dd>${r.org ? "Organización" : "Particular"}</dd>
-        ${r.lg ? `<dt>Lenguaje</dt><dd>${esc(r.lg)}</dd>` : ""}
-        <dt>Creado</dt><dd>${fecha(r.c)}</dd>
-        <dt>Último cambio</dt><dd>${fecha(r.p)} (${hace(r.p)})</dd>
-        <dt>Fuentes</dt><dd>${r.fu.map((f) => FUENTES[f] || f).join(", ")}</dd>
-        ${r.tp ? `<dt>Topics</dt><dd>${r.tp.map(esc).join(", ")}</dd>` : ""}
-      </dl>
-      <div class="enlaces"><a href="${url}" target="_blank" rel="noopener">Abrir en GitHub</a>${web}
-        <button type="button" class="boton-fav" data-fav="${esc(r.n)}" aria-pressed="${favorito}">${favorito ? "♥ En favoritos" : "♡ Guardar en favoritos"}</button></div>
-    </div>
+
+  // Para qué sirve: la descripción de GitHub y, si aporta algo más, el comienzo del README.
+  let sirve = `<p>${esc(r.d) || "<em>Sin descripción</em>"}</p>`;
+  if (rs.q) sirve += `<p>${esc(rs.q)}</p>`;
+  if (r.o) sirve += `<details class="original"><summary>Ver descripción original</summary><p>${esc(r.o)}</p></details>`;
+  if (rs.qo) sirve += `<details class="original"><summary>Ver el texto original del README</summary><p>${esc(rs.qo)}</p></details>`;
+
+  // Cómo usarlo: comandos del README y datos del registro oficial MCP. Las direcciones se
+  // muestran como texto, sin enlace: son puntos de conexión para el cliente MCP, no páginas.
+  const uso = (rs.u || []).map((c) => `<li><code>${esc(c)}</code></li>`);
+  if (r.pq) uso.push(`<li>Paquete (registro oficial MCP): ${r.pq.map(esc).join(", ")}</li>`);
+  (r.rt || []).forEach((u) => uso.push(`<li>Servidor remoto: <code>${esc(u)}</code></li>`));
+
+  const skills = r.ss ? seccion("Skills incluidas (skills.sh)", `<ul class="chips">${
+    r.ss.map((n) => `<li><a href="https://skills.sh/${encodeURIComponent(propietario)}/${encodeURIComponent(nombre)}/${encodeURIComponent(n)}" target="_blank" rel="noopener">${esc(n)}</a></li>`).join("")
+  }${r.sn > r.ss.length ? `<li class="mas">y ${numero(r.sn - r.ss.length)} más</li>` : ""}</ul>`) : "";
+
+  const hayResumen = rs.q || rs.c || rs.u || rs.r || rs.k;
+  const aviso = hayResumen
+    ? `Resumen automático: se extrae del README con reglas (sin IA) y se traduce con traducción automática, así que puede tener errores.`
+    : `Todavía no hay resumen automático de este repo (se hacen para los de 50 estrellas o más).`;
+
+  return `<div class="ficha-panel">
+    <p class="rapido"><span class="estrellas">★ ${numero(r.s)}${r.sb ? ` (+${numero(r.sb)} este mes)` : ""}</span>
+      ${r.t.map((t) => `<span class="etiqueta">${TIPOS[t] || t}</span>`).join("")}
+      <span>${esc(r.l || "sin licencia")}</span> <span>Actividad ${hace(r.p)}</span></p>
+    ${seccion("Para qué sirve", sirve)}
+    ${rs.k ? seccion("Cuándo usarla (según su SKILL.md)", `<p>${esc(rs.k)}</p>`) : ""}
+    ${rs.c ? seccion("Características principales", vinetas(rs.c)) : ""}
+    ${uso.length ? seccion("Cómo usarlo", `<ul class="vinetas comandos">${uso.join("")}</ul>`) : ""}
+    ${rs.r ? seccion("Rendimiento: lo que afirma el README", `${vinetas(rs.r)}<p class="orientativo">Son cifras del propio proyecto, sin verificar.</p>`) : ""}
+    ${skills}
+    <p class="aviso-auto">${aviso} <a href="${url}#readme" target="_blank" rel="noopener">Leer el README completo en GitHub</a></p>
+
+    <section class="bloque semaforo-bloque">
+      <div class="senal" data-sm="${r.sm}" role="img" aria-label="Semáforo ${SEMAFORO[r.sm]}"><i class="r"></i><i class="a"></i><i class="v"></i></div>
+      <div>
+        <h3>Semáforo ${SEMAFORO[r.sm]}${r.sp != null ? ` (${r.sp} puntos)` : ""}</h3>
+        <ul class="motivos">${(r.mo || []).map((m) => `<li>${esc(m)}</li>`).join("") || "<li>Sin puntos a favor</li>"}</ul>
+        <p class="orientativo">Valoración orientativa a partir de datos públicos. No es un análisis de seguridad del código.</p>
+      </div>
+    </section>
+
+    <dl class="datos">
+      <dt>Tipo</dt><dd>${r.t.map((t) => TIPOS[t] || t).join(", ")}</dd>
+      <dt>Dominio</dt><dd>${dominios}</dd>
+      <dt>Licencia</dt><dd>${esc(r.l || "Ninguna")} (${LICENCIAS[r.lt]})</dd>
+      <dt>Forks</dt><dd>${numero(r.f)}</dd>
+      <dt>Incidencias</dt><dd>${numero(r.i)} abiertas</dd>
+      <dt>Propietario</dt><dd>${r.org ? "Organización" : "Particular"}</dd>
+      ${r.lg ? `<dt>Lenguaje</dt><dd>${esc(r.lg)}</dd>` : ""}
+      <dt>Creado</dt><dd>${fecha(r.c)}</dd>
+      <dt>Último cambio</dt><dd>${fecha(r.p)} (${hace(r.p)})</dd>
+      <dt>Fuentes</dt><dd>${r.fu.map((f) => FUENTES[f] || f).join(", ")}</dd>
+      ${r.tp ? `<dt>Topics</dt><dd>${r.tp.map(esc).join(", ")}</dd>` : ""}
+    </dl>
+    <div class="enlaces"><a href="${url}" target="_blank" rel="noopener">Abrir en GitHub</a>${web}
+      <button type="button" class="boton-fav" data-fav="${esc(r.n)}" aria-pressed="${favorito}">${favorito ? "♥ En favoritos" : "♡ Guardar en favoritos"}</button></div>
   </div>`;
 }
 
-/* ---------- Eventos ---------- */
+let panelRepo = null;     // repo que se está viendo
+let panelFila = null;     // su fila en la lista (si sigue en pantalla)
+let panelPeticion = 0;    // para ignorar respuestas de un repo que ya se cerró o cambió
 
-$("#lista").addEventListener("click", async (ev) => {
-  const bfav = ev.target.closest(".boton-fav");
-  if (bfav) {
-    const activo = alternarFavorito(bfav.dataset.fav);
-    bfav.setAttribute("aria-pressed", String(activo));
-    bfav.textContent = activo ? "♥ En favoritos" : "♡ Guardar en favoritos";
-    bfav.closest(".ref").querySelector(".fav-marca").hidden = !activo;
-    return;
-  }
-  const boton = ev.target.closest(".ref-resumen");
-  if (!boton) return;
-  const li = boton.parentElement;
-  const abierta = boton.getAttribute("aria-expanded") === "true";
-  boton.setAttribute("aria-expanded", String(!abierta));
-  li.querySelector(".ficha")?.remove();
-  if (abierta) return;
-  const r = estado.resultado[Number(li.dataset.i)];
+async function abrirPanel(r, fila) {
+  panelFila?.classList.remove("activa");
+  panelFila = fila || null;
+  panelFila?.classList.add("activa");
+  panelRepo = r;
+  const peticion = ++panelPeticion;
+  const cerrado = $("#panel").hidden;
+  $("#panel-titulo").textContent = r.n;
+  $("#panel-cuerpo").innerHTML = '<p class="vacio-corto">Cargando…</p>';
+  $("#panel").hidden = false;
+  document.body.classList.add("panel-abierto");
+  if (cerrado) $("#cerrar-panel").focus();
   let extra = {};
   try {
     extra = await detalle(r);
   } catch {
-    extra = { mo: ["No se han podido cargar los motivos. Vuelve a abrir la ficha para reintentarlo."] };
+    extra = { mo: ["No se ha podido cargar el detalle. Vuelve a abrir el repo para reintentarlo."] };
   }
-  if (boton.getAttribute("aria-expanded") === "true" && !li.querySelector(".ficha")) {
-    li.insertAdjacentHTML("beforeend", ficha(r, extra));
-  }
+  if (peticion !== panelPeticion) return;
+  $("#panel-cuerpo").innerHTML = fichaPanel(r, extra);
+  $("#panel-cuerpo").scrollTop = 0;
+}
+
+function cerrarPanel() {
+  panelPeticion++;
+  $("#panel").hidden = true;
+  document.body.classList.remove("panel-abierto");
+  panelFila?.classList.remove("activa");
+  panelFila?.querySelector(".ref-resumen")?.focus({ preventScroll: true });
+  panelFila = panelRepo = null;
+}
+
+/* ---------- Eventos ---------- */
+
+$("#lista").addEventListener("click", (ev) => {
+  const boton = ev.target.closest(".ref-resumen");
+  if (!boton) return;
+  const li = boton.parentElement;
+  abrirPanel(estado.resultado[Number(li.dataset.i)], li);
 });
+
+$("#panel-cuerpo").addEventListener("click", (ev) => {
+  const bfav = ev.target.closest(".boton-fav");
+  if (!bfav) return;
+  const activo = alternarFavorito(bfav.dataset.fav);
+  bfav.setAttribute("aria-pressed", String(activo));
+  bfav.textContent = activo ? "♥ En favoritos" : "♡ Guardar en favoritos";
+  const marca = panelFila && document.contains(panelFila) ? panelFila.querySelector(".fav-marca") : null;
+  if (marca) marca.hidden = !activo;
+});
+
+$("#cerrar-panel").addEventListener("click", cerrarPanel);
 
 new IntersectionObserver((entradas) => {
   if (entradas[0].isIntersecting && estado.mostrados < estado.resultado.length) rellenar();
@@ -695,7 +751,9 @@ $("#cerrar-filtros").addEventListener("click", () => abrirFiltros(false));
 $("#ver-resultados").addEventListener("click", () => abrirFiltros(false));
 $("#fondo-hoja").addEventListener("click", () => abrirFiltros(false));
 document.addEventListener("keydown", (ev) => {
-  if (ev.key === "Escape" && $("#filtros").classList.contains("abierto")) abrirFiltros(false);
+  if (ev.key !== "Escape") return;
+  if ($("#filtros").classList.contains("abierto")) abrirFiltros(false);
+  else if (!$("#panel").hidden) cerrarPanel();
 });
 
 /* ---------- Ideas ---------- */
